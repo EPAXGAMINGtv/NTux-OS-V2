@@ -626,6 +626,10 @@ $(TCC_INCLUDE_STAMP):
 
 CPPFLAGS_LUA := $(CPPFLAGS) -I src/lua -DLUA_USE_C89 -include stddef.h
 
+$(OBJ_DIR)/tcc/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
 $(OBJ_DIR)/lua/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS_LUA) -c $< -o $@
