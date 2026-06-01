@@ -2,12 +2,11 @@
 #define NTUX_DESKTOP_DEFS_H
 
 #include <stdint.h>
-#include <terminal_engine.h>
 
 #define DESK_MAX_WINDOWS 100
 #define DESK_MAX_TITLE 48
-#define DESK_TERM_LINES TERM_BUF_ROWS
-#define DESK_TERM_COLS TERM_BUF_COLS
+#define DESK_TERM_LINES 30
+#define DESK_TERM_COLS 96
 #define DESK_CMD_BUF 4096
 #define DESK_BG_MAX_FILE (24u * 1024u * 1024u)
 #define DESK_LS_MAX 256
@@ -129,19 +128,11 @@ typedef struct {
 } desk_window_t;
 
 typedef struct {
-    term_engine_t engine;
     char lines[DESK_TERM_LINES][DESK_TERM_COLS + 1];
     int line_count;
-    char input[4096];
+    char input[256];
     int input_len;
-    int input_pos;
-    char cwd[256];
-    int history_count;
-    char history[256][256];
-    int history_pos;
-    int search_active;
-    char search_buf[128];
-    int search_pos;
+    char cwd[128];
 } desk_term_state_t;
 
 typedef struct {

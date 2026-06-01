@@ -5,10 +5,10 @@
 #include <syscall.h>
 #include <window.h>
 
-#define PAINT_W 1024
-#define PAINT_H 768
-#define CANVAS_W 1024
-#define CANVAS_H 768
+#define PAINT_W 1920
+#define PAINT_H 1080
+#define CANVAS_W 1920
+#define CANVAS_H 1080
 #define CANVAS_SCALE 1
 #define TOOLBAR_H 48
 

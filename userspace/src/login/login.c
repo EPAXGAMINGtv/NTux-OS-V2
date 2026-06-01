@@ -7,8 +7,6 @@
 #include <image.h>
 
 #define LOGIN_MAX_USERS 16
-#define LOGIN_TASKBAR_H 28
-#define LOGIN_TITLEBAR_H 22
 
 typedef struct {
     char name[32];
@@ -32,17 +30,18 @@ static int g_mouse_x = 32;
 static int g_mouse_y = 32;
 static uint8_t g_mouse_left_last = 0;
 
-/* Desktop theme colors */
-static const uint32_t TH_TASKBAR_BG = 0xEE141518u;
-static const uint32_t TH_TASKBAR_BORDER = 0xFF2A2B2Fu;
-static const uint32_t TH_ACCENT = 0xFF7D7D7Du;
-static const uint32_t TH_WINDOW_FILL = 0xFF15161Au;
-static const uint32_t TH_TEXT_MAIN = 0xFFDADADAu;
-static const uint32_t TH_TEXT_DIM = 0xFF9A9A9Au;
-static const uint32_t TH_TITLE_FOCUS = 0xFF2E3035u;
-static const uint32_t TH_TITLE_BLUR = 0xFF1A1B1Eu;
-static const uint32_t TH_BORDER_BLUR = 0xFF1E1F22u;
-static const uint32_t TH_BORDER_FOCUS = 0xFF7D7D7Du;
+static const uint32_t LOGIN_BAR_BG = 0xEE141518u;
+static const uint32_t LOGIN_BAR_BORDER = 0xFF2A2B2Fu;
+static const uint32_t LOGIN_TEXT_MAIN = 0xFFDADADAu;
+static const uint32_t LOGIN_TEXT_DIM = 0xFF9A9A9Au;
+static const uint32_t LOGIN_TEXT_SHADOW = 0xFF0A0E14u;
+static const uint32_t LOGIN_ACCENT_BRIGHT = 0xFF66CCFFu;
+static const uint32_t LOGIN_PANEL_BG = 0xEE15161Au;
+static const uint32_t LOGIN_PANEL_BORDER = 0xFF2A2B2Fu;
+static const uint32_t LOGIN_PANEL_SHADOW = 0x55000000u;
+static const uint32_t LOGIN_FIELD_BG = 0xFF15161Au;
+static const uint32_t LOGIN_FIELD_BORDER = 0xFF2E3035u;
+static const uint32_t LOGIN_WARN = 0xFFFFB36Bu;
 
 static void put_px(int x, int y, uint32_t c) {
     if (x < 0 || y < 0) return;
@@ -93,70 +92,28 @@ static void draw_text(int x, int y, const char* s, uint32_t c) {
     }
 }
 
-
-static uint32_t color_lerp(uint32_t a, uint32_t b, uint32_t t255) {
-    uint32_t ar = (a >> 16) & 0xFFu, ag = (a >> 8) & 0xFFu, ab = a & 0xFFu;
-    uint32_t br = (b >> 16) & 0xFFu, bg = (b >> 8) & 0xFFu, bb = b & 0xFFu;
-    uint32_t r = (ar * (255u - t255) + br * t255) / 255u;
-    uint32_t g = (ag * (255u - t255) + bg * t255) / 255u;
-    uint32_t bl = (ab * (255u - t255) + bb * t255) / 255u;
-    return (r << 16) | (g << 8) | bl;
+static void draw_text_shadow(int x, int y, const char* s, uint32_t fg, uint32_t shadow) {
+    draw_text(x + 1, y + 1, s, shadow);
+    draw_text(x, y, s, fg);
 }
 
-static void fill_round_rect(int x, int y, int w, int h, int r, uint32_t c) {
-    if (w <= 0 || h <= 0) return;
-    if (r <= 0) {
-        fill_rect(x, y, w, h, c);
-        return;
-    }
-    int maxr = (w < h ? w : h) / 2;
-    if (r > maxr) r = maxr;
-    fill_rect(x + r, y, w - 2 * r, h, c);
-    fill_rect(x, y + r, r, h - 2 * r, c);
-    fill_rect(x + w - r, y + r, r, h - 2 * r, c);
-    int rr = r - 1;
-    int rr2 = rr * rr;
-    for (int dy = 0; dy < r; ++dy) {
-        for (int dx = 0; dx < r; ++dx) {
-            if (dx * dx + dy * dy <= rr2) {
-                put_px(x + r - 1 - dx, y + r - 1 - dy, c);
-                put_px(x + w - r + dx, y + r - 1 - dy, c);
-                put_px(x + r - 1 - dx, y + h - r + dy, c);
-                put_px(x + w - r + dx, y + h - r + dy, c);
-            }
-        }
-    }
+static void draw_card(int x, int y, int w, int h, uint32_t bg, uint32_t border, uint32_t shadow) {
+    fill_rect(x + 6, y + 6, w, h, shadow);
+    fill_rect(x, y, w, h, bg);
+    draw_rect(x, y, w, h, border);
 }
 
-static void draw_round_rect(int x, int y, int w, int h, int r, uint32_t c) {
-    if (w <= 0 || h <= 0) return;
-    if (r <= 0) {
-        draw_rect(x, y, w, h, c);
-        return;
-    }
-    int maxr = (w < h ? w : h) / 2;
-    if (r > maxr) r = maxr;
-    fill_rect(x + r, y, w - 2 * r, 1, c);
-    fill_rect(x + r, y + h - 1, w - 2 * r, 1, c);
-    fill_rect(x, y + r, 1, h - 2 * r, c);
-    fill_rect(x + w - 1, y + r, 1, h - 2 * r, c);
-    int rr = r - 1;
-    int rr2 = rr * rr;
-    int ir = rr - 1;
-    int ir2 = ir > 0 ? ir * ir : -1;
-    for (int dy = 0; dy < r; ++dy) {
-        for (int dx = 0; dx < r; ++dx) {
-            int d2 = dx * dx + dy * dy;
-            if (d2 <= rr2 && (ir2 < 0 || d2 > ir2)) {
-                put_px(x + r - 1 - dx, y + r - 1 - dy, c);
-                put_px(x + w - r + dx, y + r - 1 - dy, c);
-                put_px(x + r - 1 - dx, y + h - r + dy, c);
-                put_px(x + w - r + dx, y + h - r + dy, c);
-            }
-        }
-    }
+static uint16_t rd_u16_le(const uint8_t* p) {
+    return (uint16_t)p[0] | (uint16_t)((uint16_t)p[1] << 8);
 }
 
+static uint32_t rd_u32_le(const uint8_t* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static int32_t rd_i32_le(const uint8_t* p) {
+    return (int32_t)rd_u32_le(p);
+}
 
 static int str_eq_ci(const char* a, const char* b) {
     if (!a || !b) return 0;
@@ -228,51 +185,17 @@ static void bg_apply_vignette(uint32_t* out) {
     }
 }
 
-static void draw_top_bar(void) {
-    int pad = 12;
-    int bar_w = (int)g_fb.width - pad * 2;
-    int clock_w = 88;
-    int clock_x = pad + bar_w - clock_w - 8;
-    fill_round_rect(pad, 8, bar_w, LOGIN_TASKBAR_H, 10, TH_TASKBAR_BG);
-    draw_round_rect(pad, 8, bar_w, LOGIN_TASKBAR_H, 10, TH_TASKBAR_BORDER);
-    fill_round_rect(pad + 8, 14, 96, 16, 6, TH_TITLE_BLUR);
-    draw_round_rect(pad + 8, 14, 96, 16, 6, TH_TASKBAR_BORDER);
-    draw_text(pad + 20, 18, "NTux-OS", TH_TEXT_MAIN);
-    fill_round_rect(clock_x, 14, clock_w, 16, 6, TH_TITLE_BLUR);
-    draw_round_rect(clock_x, 14, clock_w, 16, 6, TH_TASKBAR_BORDER);
+static void draw_header(void) {
+    fill_rect(0, 0, (int)g_fb.width, 30, LOGIN_BAR_BG);
+    fill_rect(0, 29, (int)g_fb.width, 1, LOGIN_BAR_BORDER);
+    draw_text_shadow(18, 10, "NTux", LOGIN_TEXT_MAIN, LOGIN_TEXT_SHADOW);
+    draw_text(58, 10, "login", LOGIN_ACCENT_BRIGHT);
     ntux_time_t now;
     if (sys_get_time(&now) == 0) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%02u:%02u:%02u", now.hour, now.minute, now.second);
-        draw_text(clock_x + 12, 18, buf, TH_ACCENT);
-    }
-}
-
-static void draw_window_panel(int px, int py, int pw, int ph, const char* title) {
-    int r = 6;
-    uint32_t sh_hi = 68u;
-    uint32_t sh_mid = 82u;
-    uint32_t sh_base = 26u;
-    fill_round_rect(px + 7, py + 9, pw, ph, r + 3, color_lerp(0xFF000000u, TH_TASKBAR_BG, sh_hi));
-    fill_round_rect(px + 4, py + 5, pw, ph, r + 2, color_lerp(0xFF000000u, TH_TASKBAR_BG, sh_mid));
-    fill_round_rect(px, py, pw, ph, r, color_lerp(TH_TASKBAR_BG, 0xFF000000u, sh_base));
-    fill_round_rect(px + 1, py + 1, pw - 2, ph - 2, r - 1, TH_WINDOW_FILL);
-    for (int yy = 0; yy < LOGIN_TITLEBAR_H - 1; ++yy) {
-        uint32_t row = color_lerp(TH_TITLE_FOCUS, 0xFF000000u, (uint32_t)(yy * 110 / LOGIN_TITLEBAR_H));
-        fill_rect(px + 1, py + 1 + yy, pw - 2, 1, row);
-    }
-    draw_round_rect(px, py, pw, ph, r, TH_BORDER_BLUR);
-    draw_text(px + 8, py + 7, title, TH_TEXT_MAIN);
-    fill_round_rect(px + pw - 18, py + 6, 12, 12, 6, 0xFFF95F62u);
-    fill_round_rect(px + pw - 34, py + 6, 12, 12, 6, 0xFF4EC9FFu);
-    fill_round_rect(px + pw - 50, py + 6, 12, 12, 6, TH_ACCENT);
-}
-
-static void draw_avatar(int cx, int cy, int r, uint32_t c) {
-    for (int y = -r; y <= r; ++y) {
-        for (int x = -r; x <= r; ++x) {
-            if (x * x + y * y <= r * r) put_px(cx + x, cy + y, c);
-        }
+        int tx = (int)g_fb.width - (int)strlen(buf) * 8 - 18;
+        draw_text_shadow(tx, 10, buf, LOGIN_TEXT_MAIN, LOGIN_TEXT_SHADOW);
     }
 }
 
@@ -312,6 +235,53 @@ static int bg_load_image(const char* path, uint32_t* out) {
     return 0;
 }
 
+static int bg_load_bmp(const char* path, uint32_t* out) {
+    uint64_t len = 0;
+    uint8_t* file = 0;
+    if (!path || !out) return -1;
+    if (sys_fs_read_file(path, 0, 0, &len) != 0 || len < 54 || len > (24u * 1024u * 1024u)) return -1;
+    file = (uint8_t*)malloc((size_t)len);
+    if (!file) return -1;
+    if (sys_fs_read_file(path, file, len, &len) != 0 || len < 54) {
+        free(file);
+        return -1;
+    }
+    if (rd_u16_le(file) != 0x4D42u) {
+        free(file);
+        return -1;
+    }
+    uint32_t off = rd_u32_le(file + 10u);
+    uint32_t dib = rd_u32_le(file + 14u);
+    int32_t w = rd_i32_le(file + 18u);
+    int32_t h = rd_i32_le(file + 22u);
+    uint16_t bpp = rd_u16_le(file + 28u);
+    uint32_t compression = rd_u32_le(file + 30u);
+    if (dib < 40u || w <= 0 || h == 0 || (bpp != 24u && bpp != 32u) || compression != 0u) {
+        free(file);
+        return -1;
+    }
+    uint32_t src_w = (uint32_t)w;
+    uint32_t src_h = (h < 0) ? (uint32_t)(-h) : (uint32_t)h;
+    uint64_t row_stride = ((((uint64_t)src_w * (uint64_t)bpp) + 31u) / 32u) * 4u;
+    if ((uint64_t)off + row_stride * (uint64_t)src_h > len) {
+        free(file);
+        return -1;
+    }
+    int bottom_up = (h > 0);
+    for (uint32_t y = 0; y < g_fb.height; ++y) {
+        uint32_t sy = (uint32_t)(((uint64_t)y * (uint64_t)src_h) / (uint64_t)g_fb.height);
+        if (bottom_up) sy = src_h - 1u - sy;
+        const uint8_t* row = file + off + (uint64_t)sy * row_stride;
+        for (uint32_t x = 0; x < g_fb.width; ++x) {
+            uint32_t sx = (uint32_t)(((uint64_t)x * (uint64_t)src_w) / (uint64_t)g_fb.width);
+            const uint8_t* px = row + (uint64_t)sx * (uint64_t)(bpp / 8u);
+            uint8_t b = px[0], g = px[1], r = px[2];
+            out[(uint64_t)y * (uint64_t)g_fb.width + (uint64_t)x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+        }
+    }
+    free(file);
+    return 0;
+}
 
 static int path_is_image_ext(const char* path) {
     return str_ends_with_ci(path, ".bmp") || str_ends_with_ci(path, ".png") ||
@@ -549,48 +519,70 @@ static void draw_cursor(void) {
     }
 }
 
-static void draw_user_stage(void) {
-    int pw = 520, ph = 300;
-    int px = (int)g_fb.width / 2 - pw / 2;
-    int py = (int)g_fb.height / 2 - ph / 2 + 20;
-    draw_window_panel(px, py, pw, ph, "Sign in");
-    draw_avatar(px + pw / 2, py + 80, 48, TH_ACCENT);
-    int nx = px + pw / 2 - (int)strlen(g_users[g_user_sel].name) * 4;
-    draw_text(nx, py + 136, g_users[g_user_sel].name, TH_TEXT_MAIN);
-    if (g_user_count > 1) {
-        draw_text(px + pw / 2 - 120, py + 162, "\x1B  Switch user  \x1A", TH_TEXT_DIM);
+static void draw_avatar(int cx, int cy, int r, uint32_t c) {
+    for (int y = -r; y <= r; ++y) {
+        for (int x = -r; x <= r; ++x) {
+            if (x * x + y * y <= r * r) put_px(cx + x, cy + y, c);
+        }
     }
-    draw_text(px + pw / 2 - 60, py + 192, "Click or press Enter", TH_TEXT_DIM);
-    fill_round_rect(px + pw / 2 - 52, py + 225, 104, 28, 6, TH_ACCENT);
-    draw_round_rect(px + pw / 2 - 52, py + 225, 104, 28, 6, TH_BORDER_FOCUS);
-    draw_text(px + pw / 2 - 28, py + 233, "Unlock", 0xFF091018u);
 }
 
-static void draw_pass_stage(void) {
-    int pw = 520, ph = 340;
+static void draw_user_stage(int panel_y) {
+    int pw = 520, ph = 320;
     int px = (int)g_fb.width / 2 - pw / 2;
-    int py = (int)g_fb.height / 2 - ph / 2 + 20;
+    int py = panel_y;
+    draw_card(px, py, pw, ph, LOGIN_PANEL_BG, LOGIN_PANEL_BORDER, LOGIN_PANEL_SHADOW);
+    fill_rect(px + 1, py + 1, pw - 2, 38, 0xFF1A1F2Au);
+    fill_rect(px, py + 38, pw, 2, LOGIN_BAR_BORDER);
+    draw_text_shadow(px + 24, py + 14, "NTux-OS Login", LOGIN_TEXT_MAIN, LOGIN_TEXT_SHADOW);
+    draw_text(px + 24, py + 30, "Choose your account", LOGIN_TEXT_DIM);
+    draw_avatar(px + pw / 2, py + 126, 48, LOGIN_ACCENT_BRIGHT);
+    draw_text_shadow(px + pw / 2 - (int)strlen(g_users[g_user_sel].name) * 4, py + 194,
+                     g_users[g_user_sel].name, LOGIN_TEXT_MAIN, LOGIN_TEXT_SHADOW);
+    draw_text(px + pw / 2 - 90, py + 232, "Press Enter to sign in", LOGIN_TEXT_DIM);
+    if (g_user_count > 1) draw_text(px + pw / 2 - 104, py + 248, "Arrow Left/Right to switch user", LOGIN_TEXT_DIM);
+    draw_text(px + 18, py + ph - 24, "Secure session", LOGIN_TEXT_DIM);
+}
+
+static void draw_pass_stage(int panel_y) {
+    int pw = 560, ph = 360;
+    int px = (int)g_fb.width / 2 - pw / 2;
+    int py = panel_y;
     char mask[64];
     size_t n = strlen(g_pass);
     if (n >= sizeof(mask)) n = sizeof(mask) - 1;
     for (size_t i = 0; i < n; ++i) mask[i] = '*';
     mask[n] = '\0';
-    draw_window_panel(px, py, pw, ph, "Enter password");
-    draw_avatar(px + pw / 2, py + 70, 40, TH_ACCENT);
-    int nx = px + pw / 2 - (int)strlen(g_users[g_user_sel].name) * 4;
-    draw_text(nx, py + 120, g_users[g_user_sel].name, TH_TEXT_MAIN);
-    draw_text(px + 36, py + 156, "Password", TH_TEXT_DIM);
-    fill_round_rect(px + 36, py + 170, pw - 72, 34, 6, 0xFF0B0C0Fu);
-    draw_round_rect(px + 36, py + 170, pw - 72, 34, 6, TH_BORDER_BLUR);
-    draw_text(px + 48, py + 182, mask[0] ? mask : "<type password>", TH_TEXT_MAIN);
-    fill_round_rect(px + pw - 168, py + 222, 120, 28, 6, TH_ACCENT);
-    draw_round_rect(px + pw - 168, py + 222, 120, 28, 6, TH_BORDER_FOCUS);
-    draw_text(px + pw - 142, py + 230, "Unlock", 0xFF091018u);
+    draw_card(px, py, pw, ph, LOGIN_PANEL_BG, LOGIN_PANEL_BORDER, LOGIN_PANEL_SHADOW);
+    fill_rect(px + 1, py + 1, pw - 2, 38, 0xFF1A1F2Au);
+    fill_rect(px, py + 38, pw, 2, LOGIN_BAR_BORDER);
+    draw_text_shadow(px + 24, py + 14, "Secure sign-in", LOGIN_TEXT_MAIN, LOGIN_TEXT_SHADOW);
+    draw_text(px + 24, py + 30, "Welcome back", LOGIN_TEXT_DIM);
+    draw_avatar(px + pw / 2, py + 100, 40, LOGIN_ACCENT_BRIGHT);
+    draw_text_shadow(px + pw / 2 - (int)strlen(g_users[g_user_sel].name) * 4, py + 148,
+                     g_users[g_user_sel].name, LOGIN_TEXT_MAIN, LOGIN_TEXT_SHADOW);
+    draw_text(px + 36, py + 186, "Password", LOGIN_TEXT_DIM);
+    fill_rect(px + 36, py + 200, pw - 72, 34, LOGIN_FIELD_BG);
+    draw_rect(px + 36, py + 200, pw - 72, 34, LOGIN_FIELD_BORDER);
+    draw_text(px + 48, py + 212, mask[0] ? mask : "<type password>", LOGIN_TEXT_MAIN);
+    draw_text(px + 36, py + 244, "Enter = unlock, Esc = back", LOGIN_TEXT_DIM);
     if (sys_get_ticks() - g_status_tick < 240u) {
-        fill_round_rect(px + 32, py + 268, pw - 64, 22, 6, color_lerp(0xFF000000u, TH_TITLE_BLUR, 120u));
-        draw_text(px + 40, py + 274, g_status, 0xFFFFB36Bu);
+        fill_rect(px + 32, py + 270, pw - 64, 22, 0x88201A12u);
+        draw_text(px + 40, py + 274, g_status, LOGIN_WARN);
     }
-    draw_text(px + 36, py + 306, "Esc to go back", TH_TEXT_DIM);
+}
+
+static void animate_to_desktop(void) {
+    for (int i = 0; i <= 38; ++i) {
+        memcpy(g_frame, g_bg, g_pixels * sizeof(uint32_t));
+        draw_header();
+        int y0 = (int)g_fb.height / 2 - 170 + i * 14;
+        draw_pass_stage(y0);
+        fill_rect(0, 0, (int)g_fb.width, i * 5, 0x88000000u);
+        draw_cursor();
+        (void)sys_fb_blit32(g_frame, g_fb.width, g_fb.height, g_fb.width * 4u);
+        sys_wait_ticks(1);
+    }
 }
 
 static long start_desktop_task(void) {
@@ -616,29 +608,26 @@ void ntux_user_entry(void) {
         int clicked = 0;
         mouse_poll(&clicked);
         memcpy(g_frame, g_bg, g_pixels * sizeof(uint32_t));
-        draw_top_bar();
-
+        draw_header();
+        int center_y = (int)g_fb.height / 2 - (g_stage == 0 ? 160 : 180);
         if (g_stage == 0) {
-            int pw = 520, ph = 300;
+            int pw = 460, ph = 300;
             int px = (int)g_fb.width / 2 - pw / 2;
-            int py = (int)g_fb.height / 2 - ph / 2 + 20;
-            if (clicked && in_rect(g_mouse_x, g_mouse_y, px, py, pw, ph)) {
+            if (clicked && in_rect(g_mouse_x, g_mouse_y, px, center_y, pw, ph)) {
                 g_stage = 1;
                 g_pass[0] = '\0';
                 strncpy(g_status, "Enter password", sizeof(g_status) - 1);
                 g_status_tick = sys_get_ticks();
             }
-            draw_user_stage();
+            draw_user_stage(center_y);
         } else {
             int pw = 520, ph = 340;
             int px = (int)g_fb.width / 2 - pw / 2;
-            int py = (int)g_fb.height / 2 - ph / 2 + 20;
-            if (clicked && !in_rect(g_mouse_x, g_mouse_y, px, py, pw, ph)) {
+            if (clicked && !in_rect(g_mouse_x, g_mouse_y, px, center_y, pw, ph)) {
                 g_stage = 0;
                 g_pass[0] = '\0';
-                memset(g_key_last, 0, sizeof(g_key_last));
             }
-            draw_pass_stage();
+            draw_pass_stage(center_y);
         }
         draw_cursor();
         (void)sys_fb_blit32(g_frame, g_fb.width, g_fb.height, g_fb.width * 4u);
@@ -654,7 +643,6 @@ void ntux_user_entry(void) {
             if (poll_special_press(0x1C) || ch == '\n' || ch == '\r') {
                 g_stage = 1;
                 g_pass[0] = '\0';
-                memset(g_key_last, 0, sizeof(g_key_last));
                 strncpy(g_status, "Enter password", sizeof(g_status) - 1);
                 g_status_tick = sys_get_ticks();
             }
@@ -670,12 +658,8 @@ void ntux_user_entry(void) {
             if (poll_special_press(0x01) || ch == 27) {
                 g_stage = 0;
                 g_pass[0] = '\0';
-                memset(g_key_last, 0, sizeof(g_key_last));
             }
             if (poll_special_press(0x1C) || ch == '\n' || ch == '\r') {
-                strncpy(g_status, "Authenticating...", sizeof(g_status) - 1);
-                g_status[sizeof(g_status) - 1] = '\0';
-                g_status_tick = sys_get_ticks();
                 if (auth_current_user() == 0) {
                     (void)sys_set_uid(g_users[g_user_sel].uid);
                     (void)sys_fs_mkdir("/home", ".ntux");
@@ -683,7 +667,7 @@ void ntux_user_entry(void) {
                                             (uint64_t)strlen(g_users[g_user_sel].name));
                     long rc = start_desktop_task();
                     if (rc == 0) {
-                        for (int i = 0; i < 8; ++i) (void)sys_yield();
+                        /*for (int i = 0; i < 8; ++i)*/ (void)sys_yield();
                         sys_exit(0);
                     }
                     strncpy(g_status, "Desktop start failed", sizeof(g_status) - 1);
