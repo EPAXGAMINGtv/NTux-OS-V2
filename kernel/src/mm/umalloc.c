@@ -2,7 +2,6 @@
 
 #include "pmm.h"
 #include "vmm.h"
-#include "paging.h"
 #include <drivers/framebuffer/kprint.h>
 
 static uintptr_t user_heap_break = USER_HEAP_START;

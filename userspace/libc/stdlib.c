@@ -15,7 +15,7 @@ typedef struct blk {
  * Doom needs several MiB of dynamic memory (zone allocator starts at 6 MiB).
  * Keep a larger static heap so userspace apps can run without immediate OOM.
  */
-#define USER_HEAP_BYTES (128u * 1024u * 1024u)
+#define USER_HEAP_BYTES (32u * 1024u * 1024u)
 static uint8_t g_heap[USER_HEAP_BYTES];
 static size_t g_heap_break = 0;
 static blk_t *g_free = 0;

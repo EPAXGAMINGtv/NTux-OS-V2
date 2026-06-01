@@ -1,34 +1,40 @@
 #ifndef RAMFS_H
 #define RAMFS_H
 
-#include <stddef.h>
 #include <stdint.h>
 
-#define RAMFS_MAX_NAME      32
-#define RAMFS_MAX_CHILDREN  16
+#include <fs/vfs.h>
+
+#define RAMFS_MAX_NODES 1024
+#define RAMFS_MAX_CHILDREN 64
+#define RAMFS_MAX_FILE_BYTES (1024 * 1024)
 
 typedef enum {
-    RAMFS_FILE,
-    RAMFS_DIR
+    RAMFS_NODE_FILE = 0,
+    RAMFS_NODE_DIR,
 } ramfs_node_type_t;
 
-typedef struct ramfs_node {
-    char name[RAMFS_MAX_NAME];
+typedef struct {
+    int used;
     ramfs_node_type_t type;
-    struct ramfs_node* parent;
-    struct ramfs_node* children[RAMFS_MAX_CHILDREN];  
+    int parent;
+    char name[VFS_MAX_NAME];
+    int children[RAMFS_MAX_CHILDREN];
     size_t child_count;
-    char* data;       
-    size_t size;      
+    uint8_t* data;
+    size_t size;
+    size_t capacity;
 } ramfs_node_t;
 
+typedef struct {
+    ramfs_node_t nodes[RAMFS_MAX_NODES];
+    uint8_t file_pool[RAMFS_MAX_FILE_BYTES];
+    size_t file_pool_used;
+    int root_index;
+} ramfs_t;
 
-void ramfs_init(void);
-ramfs_node_t* ramfs_mkdir(const char* path);
-ramfs_node_t* ramfs_create_file(const char* path, const char* data);
-ramfs_node_t* ramfs_read_file(const char* path);
-void ramfs_list_dir(const char* path);
-void* ramfs_read_file_to_memory(const char* path, size_t* size);
-ramfs_node_t* ramfs_delete_file(const char* path);
+void ramfs_init(ramfs_t* fs);
+const vfs_backend_ops_t* ramfs_backend_ops(void);
+int ramfs_get_file_view(ramfs_t* fs, const char* path, const uint8_t** out_data, size_t* out_len);
 
 #endif

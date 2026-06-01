@@ -7,7 +7,6 @@
 #include <image.h>
 #include <window.h>
 #include <font8x8_basic.h>
-#include <terminal_engine.h>
 
 #include "desktop_defs.h"
 #include "cursor.h"
@@ -1037,6 +1036,26 @@ static void desktop_publish_input_state(void) {
         st.base_w = base_w;
         st.base_h = base_h;
         if (hover_index == g_focus_index) st.focused = 1;
+    } else if (g_focus_index >= 0 && g_focus_index < g_window_count) {
+        const desk_window_t* w = &g_windows[g_focus_index];
+        if (w->visible && !w->minimized) {
+            int base_w = w->canvas_base_w;
+            int base_h = w->canvas_base_h;
+            int client_w = w->w - 4;
+            int client_h = w->h - DESK_TITLEBAR_H - 3;
+            if (client_w < 1) client_w = 1;
+            if (client_h < 1) client_h = 1;
+            if (base_w <= 0) base_w = client_w;
+            if (base_h <= 0) base_h = client_h;
+            st.focused = 1;
+            st.window_id = w->id;
+            st.win_x = w->x;
+            st.win_y = w->y;
+            st.win_w = w->w;
+            st.win_h = w->h;
+            st.base_w = base_w;
+            st.base_h = base_h;
+        }
     }
     st.mouse_x = g_last_mouse_x;
     st.mouse_y = g_last_mouse_y;
@@ -1122,67 +1141,6 @@ void draw_text(int x, int y, const char* s, uint32_t c) {
     }
 }
 
-static void term_draw_cell(int x, int y, char ch, uint32_t fg, uint32_t bg) {
-    uint32_t def_bg = 0xFF0C121Bu;
-    if (bg != def_bg) {
-        fill_rect(x, y, 8, 10, bg);
-    }
-    if (ch != 0 && ch != ' ') {
-        draw_char(x, y, ch, fg);
-    }
-}
-
-static void term_render_engine(desk_term_state_t* ts, int body_x, int body_y, int body_w, int body_h) {
-    term_engine_t* e = &ts->engine;
-    int cell_w = 8;
-    int cell_h = 10;
-    int visible_cols = body_w / cell_w;
-    int visible_rows = body_h / cell_h;
-    if (visible_cols > e->cols) visible_cols = e->cols;
-    if (visible_rows > e->rows) visible_rows = e->rows;
-    int scroll_off = e->scroll_offset;
-    for (int r = 0; r < visible_rows; r++) {
-        int src_r = r + scroll_off;
-        if (src_r >= e->rows) break;
-        int y = body_y + r * cell_h;
-        for (int c = 0; c < visible_cols; c++) {
-            int x = body_x + c * cell_w;
-            term_cell_t* cell = &e->screen[src_r][c];
-            uint32_t fg = term_resolve_color(cell->fg);
-            uint32_t bg = term_resolve_color(cell->bg);
-            if (cell->attr & TERM_ATTR_REVERSE) {
-                uint32_t tmp = fg; fg = bg; bg = tmp;
-            }
-            if (cell->attr & TERM_ATTR_BOLD) {
-                uint8_t r8 = (uint8_t)((fg >> 16) & 0xFF);
-                uint8_t g8 = (uint8_t)((fg >> 8) & 0xFF);
-                uint8_t b8 = (uint8_t)(fg & 0xFF);
-                r8 = (uint8_t)(r8 + ((255 - r8) / 2));
-                g8 = (uint8_t)(g8 + ((255 - g8) / 2));
-                b8 = (uint8_t)(b8 + ((255 - b8) / 2));
-                fg = 0xFF000000u | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) | b8;
-            }
-            if (cell->attr & TERM_ATTR_DIM) {
-                uint8_t r8 = (uint8_t)((fg >> 16) & 0xFF);
-                uint8_t g8 = (uint8_t)((fg >> 8) & 0xFF);
-                uint8_t b8 = (uint8_t)(fg & 0xFF);
-                r8 /= 2; g8 /= 2; b8 /= 2;
-                fg = 0xFF000000u | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) | b8;
-            }
-            if (src_r == e->cur_y && c == e->cur_x && e->cursor_visible) {
-                bg = 0xFF56E6AAu;
-                fg = term_resolve_color(e->bg);
-            }
-            term_draw_cell(x, y, (char)cell->ch, fg, bg);
-        }
-    }
-}
-
-static void term_write_engine(desk_term_state_t* ts, const char* s) {
-    if (!ts || !s) return;
-    term_write(&ts->engine, s, (int)strlen(s));
-}
-
 static desk_term_state_t* term_state_for_window(const desk_window_t* w) {
     if (!w || !w->terminal) return 0;
     if (w->term_slot >= DESK_MAX_WINDOWS) return 0;
@@ -1195,14 +1153,11 @@ static desk_term_state_t* term_state_active(void) {
 }
 
 void term_print_banner(void) {
-    desk_term_state_t* ts = g_term_exec_state ? g_term_exec_state : term_state_active();
-    if (!ts) return;
-    term_write_engine(ts, "\x1b[1m\x1b[96m");
-    term_write_engine(ts, "  +------------------------ NTux Shell ------------------------+\n");
-    term_write_engine(ts, "  | \x1b[97mprofile: NTux-OS\x1b[96m     \x1b[97mrenderer: terminal engine\x1b[96m  \x1b[97mstatus: live\x1b[96m |\n");
-    term_write_engine(ts, "  +-----------------------------------------------------------+\n");
-    term_write_engine(ts, "\x1b[0m");
-    term_write_engine(ts, "\x1b[90m  help  clear  ls  cd  run  lua  tcc  echo  banner  pwd\x1b[0m\n");
+    term_push_line("+---------------------------- NTux Shell ----------------------------+");
+    term_push_line("| profile: NTux-OS          renderer: desktop window     status: live|");
+    term_push_line("+--------------------------------------------------------------------+");
+    term_push_line(" help clear ls cd run adduser whoami mkfs.ext4 lsblk fdisk dd shutdown");
+    term_push_line("+--------------------------------------------------------------------+");
 }
 
 static void term_make_prompt(const desk_term_state_t* ts, char* out, size_t cap) {
@@ -2698,14 +2653,6 @@ static void desktop_check_installer_request(void) {
 
 static void term_push_line_state(desk_term_state_t* ts, const char* s) {
     if (!ts || !s) return;
-    size_t slen = strlen(s);
-    char* buf = (char*)malloc(slen + 2);
-    if (!buf) return;
-    memcpy(buf, s, slen);
-    buf[slen] = '\n';
-    buf[slen + 1] = '\0';
-    term_write_engine(ts, buf);
-    free(buf);
     if (ts->line_count < DESK_TERM_LINES) {
         strncpy(ts->lines[ts->line_count], s, DESK_TERM_COLS);
         ts->lines[ts->line_count][DESK_TERM_COLS] = '\0';
@@ -2724,11 +2671,27 @@ static void term_push_line(const char* s) {
     term_push_line_state(ts, s);
 }
 
-static void term_push_multiline_state(desk_term_state_t* ts, const char* s);
-
 static void term_push_multiline(const char* s) {
-    desk_term_state_t* ts = g_term_exec_state ? g_term_exec_state : term_state_active();
-    term_push_multiline_state(ts, s);
+    char line[DESK_TERM_COLS + 1];
+    size_t li = 0;
+    if (!s) return;
+    for (size_t i = 0;; ++i) {
+        char c = s[i];
+        if (c == '\n' || c == '\0') {
+            line[li] = '\0';
+            term_push_line(line);
+            li = 0;
+            if (c == '\0') break;
+            continue;
+        }
+        if (li + 1 >= (size_t)sizeof(line)) {
+            line[li] = '\0';
+            term_push_line(line);
+            li = 0;
+        }
+        if (c == '\r') continue;
+        line[li++] = c;
+    }
 }
 
 static int split_args(char* line, char* argv[], int maxc) {
@@ -2737,16 +2700,10 @@ static int split_args(char* line, char* argv[], int maxc) {
     while (*p && argc < maxc) {
         while (*p == ' ' || *p == '\t') p++;
         if (!*p) break;
-        if (*p == '"') {
-            p++;
-            argv[argc++] = p;
-            while (*p && *p != '"') p++;
-            if (*p) *p++ = '\0';
-        } else {
-            argv[argc++] = p;
-            while (*p && *p != ' ' && *p != '\t') p++;
-            if (*p) *p++ = '\0';
-        }
+        argv[argc++] = p;
+        while (*p && *p != ' ' && *p != '\t') p++;
+        if (!*p) break;
+        *p++ = '\0';
     }
     return argc;
 }
@@ -3009,8 +2966,26 @@ static void term_cmd_ls(const char* cwd, const char* arg) {
 }
 
 static void term_push_multiline_state(desk_term_state_t* ts, const char* s) {
+    char line[DESK_TERM_COLS + 1];
+    size_t li = 0;
     if (!s || !ts) return;
-    term_write_engine(ts, s);
+    for (size_t i = 0;; ++i) {
+        char c = s[i];
+        if (c == '\n' || c == '\0') {
+            line[li] = '\0';
+            term_push_line_state(ts, line);
+            li = 0;
+            if (c == '\0') break;
+            continue;
+        }
+        if (li + 1 >= sizeof(line)) {
+            line[li] = '\0';
+            term_push_line_state(ts, line);
+            li = 0;
+        }
+        if (c == '\r') continue;
+        line[li++] = c;
+    }
 }
 
 void desk_term_write_for_tid(int tid, const char* s) {
@@ -3732,10 +3707,6 @@ void term_run_command_line(desk_window_t* tw, const char* line_in) {
     }
     if (strcmp(argv[0], "clear") == 0) {
         ts->line_count = 0;
-        term_clear_screen(&ts->engine);
-        term_reset_attr(&ts->engine);
-        ts->engine.cur_x = 0;
-        ts->engine.cur_y = 0;
         term_print_banner();
         g_term_exec_state = 0;
         return;
@@ -4577,24 +4548,24 @@ static void draw_window(desk_window_t* w, int focused) {
 
     if (w->terminal) {
         desk_term_state_t* ts = term_state_for_window(w);
-        int cx = ox + 6;
-        int cy = oy + DESK_TITLEBAR_H + 1;
-        int body_w = ow - 4;
-        int body_h = oh - DESK_TITLEBAR_H - 3;
-        fill_rect(ox + 2, cy, body_w, body_h, 0xFF0C121Bu);
+        int tx = ox + 6;
+        int ty = oy + DESK_TITLEBAR_H + 4;
+        fill_rect(ox + 2, oy + DESK_TITLEBAR_H + 1, ow - 4, oh - DESK_TITLEBAR_H - 3, 0xFF070B10u);
+        fill_rect(ox + 2, oy + DESK_TITLEBAR_H + 1, ow - 4, 16, th->title_focus);
+        draw_text(ox + 8, oy + DESK_TITLEBAR_H + 5, "NTux Shell Window", th->text_main);
         if (ts) {
-            int term_body_y = cy + 4;
-            int term_body_h = body_h - 22;
-            term_render_engine(ts, cx, term_body_y, body_w - 8, term_body_h);
+            for (int i = 0; i < ts->line_count; ++i) {
+                draw_text(tx, ty + 18 + i * 10, ts->lines[i], 0xFFBFD0FFu);
+            }
         }
-        char prompt_top[256];
-        char prompt_line[256];
+        char prompt_top[DESK_TERM_COLS + 64];
+        char prompt_line[DESK_TERM_COLS + 64];
         term_make_prompt(ts, prompt_top, sizeof(prompt_top));
         prompt_line[0] = '\0';
-        (void)str_append(prompt_line, sizeof(prompt_line), "> ");
+        (void)str_append(prompt_line, sizeof(prompt_line), "+-> ");
         (void)str_append(prompt_line, sizeof(prompt_line), ts ? ts->input : "");
-        draw_text(cx, oy + oh - 22, prompt_top, th->accent);
-        draw_text(cx, oy + oh - 12, prompt_line, 0xFF39FF88u);
+        draw_text(tx, oy + oh - 24, prompt_top, th->accent);
+        draw_text(tx, oy + oh - 14, prompt_line, 0xFF39FF88u);
     } else if (w->file_browser) {
         draw_file_browser(w, window_browser_state(w));
     } else if (w->analog_clock) {
@@ -7272,22 +7243,8 @@ void open_console_window(void) {
     memset(ts, 0, sizeof(*ts));
     strncpy(ts->cwd, "/", sizeof(ts->cwd) - 1);
     ts->cwd[sizeof(ts->cwd) - 1] = '\0';
-    int term_cols = (w->w - 16) / 8;
-    int term_rows = (w->h - 56) / 10;
-    if (term_cols < 40) term_cols = 40;
-    if (term_rows < 10) term_rows = 10;
-    if (term_cols > TERM_BUF_COLS) term_cols = TERM_BUF_COLS;
-    if (term_rows > TERM_BUF_ROWS) term_rows = TERM_BUF_ROWS;
-    term_init(&ts->engine, term_rows, term_cols);
     g_term_exec_state = ts;
-    term_write_engine(ts, "\x1b[1m\x1b[96m");
-    term_write_engine(ts, "  ╔══════════════════════════════════════════════════════╗\n");
-    term_write_engine(ts, "  ║  \x1b[97mNTux-OS Terminal\x1b[96m                                   ║\n");
-    term_write_engine(ts, "  ╠══════════════════════════════════════════════════════╣\n");
-    term_write_engine(ts, "  ║  \x1b[93mprofile:\x1b[0m NTux-OS    \x1b[93mrenderer:\x1b[0m terminal engine  \x1b[93mstatus:\x1b[0m live  \x1b[96m║\n");
-    term_write_engine(ts, "  ╚══════════════════════════════════════════════════════╝\n");
-    term_write_engine(ts, "\x1b[0m");
-    term_write_engine(ts, "\x1b[90m  help   clear   ls   cd   run   lua   tcc   echo\x1b[0m\n");
+    term_print_banner();
     g_term_exec_state = 0;
 }
 

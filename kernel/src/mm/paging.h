@@ -3,9 +3,8 @@
 
 #include <stdint.h>
 
-#ifndef PAGE_SIZE
 #define PAGE_SIZE 4096
-#endif
+
 
 #define PAGE_PRESENT   (1ULL << 0)
 #define PAGE_WRITABLE  (1ULL << 1)

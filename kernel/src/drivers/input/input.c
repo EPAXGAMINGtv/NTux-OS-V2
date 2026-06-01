@@ -36,6 +36,11 @@ void input_poll(void) {
     for (uint8_t k = 0; k < 128; ++k) {
         g_ps2_key_down[k] = keyboard_is_key_pressed(k) ? 1u : 0u;
     }
+
+    int budget = 256;
+    while (budget-- > 0 && mouse_data()) {
+        mouse_poll();
+    }
 }
 
 int input_try_getchar(char* out) {

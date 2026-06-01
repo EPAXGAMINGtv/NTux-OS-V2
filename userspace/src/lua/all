@@ -1,4 +1,4 @@
-ake -s -j
+make -s -j
 cd testes/libs; make -s
 cd ..     # back to directory 'testes'
 ulimit -S -s 1100

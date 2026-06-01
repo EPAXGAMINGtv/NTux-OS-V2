@@ -8,9 +8,13 @@
 #define PCI_BAR0 0x10
 
 typedef void (*pci_scan_func_t)(uint32_t bus, uint32_t device, uint16_t vendor, uint16_t device_id, void *extra);
+typedef void (*pci_scan_func_ex_t)(uint32_t bus, uint32_t device, uint32_t function, uint16_t vendor, uint16_t device_id, void* extra);
 
 uint32_t pci_read_field(uint32_t bus, uint32_t device, uint32_t function, uint32_t offset, uint32_t size);
 void pci_write_field(uint32_t bus, uint32_t device, uint32_t function, uint32_t offset, uint32_t size, uint32_t value);
 void pci_scan(pci_scan_func_t callback, void *extra);
+void pci_scan_ex(pci_scan_func_ex_t callback, void* extra);
+void pci_scan_ex_range(uint32_t start_bus, uint32_t end_bus, pci_scan_func_ex_t callback, void* extra);
+uint8_t pci_detect_max_bus(void);
 
-#endif // PCI_H
+#endif 

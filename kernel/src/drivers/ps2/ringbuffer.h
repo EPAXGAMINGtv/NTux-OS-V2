@@ -8,6 +8,7 @@ typedef struct {
     char buffer[RINGBUFFER_SIZE];
     uint32_t head;
     uint32_t tail;
+    volatile uint8_t lock;
 } ringbuffer_t;
 
 void rb_init(ringbuffer_t* rb);
@@ -15,4 +16,4 @@ int rb_put(ringbuffer_t* rb, char c);
 int rb_get(ringbuffer_t* rb, char* c);
 int rb_empty(ringbuffer_t* rb);
 
-#endif // RINGBUFFER_H
+#endif 

@@ -17,6 +17,9 @@ bool mouse_init(void);
 void mouse_irq_handler(void);
 
 
+void mouse_poll(void);
+
+
 void mouse_set_bounds(int width, int height);
 
 
@@ -30,6 +33,8 @@ int mouse_get_scroll(void);
 
 void draw_mouse_cursor(volatile struct limine_framebuffer* fb);
 
+
+bool mouse_data();
 void mouse_inject_report(int dx, int dy, int wheel, bool left, bool right, bool middle);
 
 #endif

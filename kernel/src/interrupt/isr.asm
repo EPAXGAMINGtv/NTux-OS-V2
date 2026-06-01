@@ -29,7 +29,6 @@ isr_stub_table:
     mov rsi, [rsp + 120] 
     mov rdx, [rsp + 128] 
     mov rcx, [rsp + 136]
-    mov r8,  [rsp + 152]
     call isr_handle_error
     test rax, rax
     jnz .isr_exit_thread

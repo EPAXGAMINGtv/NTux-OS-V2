@@ -200,13 +200,6 @@ static int deskapi_open_terminal(const window_msg_t* msg) {
     memset(ts, 0, sizeof(*ts));
     strncpy(ts->cwd, "/", sizeof(ts->cwd) - 1);
     ts->cwd[sizeof(ts->cwd) - 1] = '\0';
-    int term_cols = (w->w - 16) / 8;
-    int term_rows = (w->h - 56) / 10;
-    if (term_cols < 40) term_cols = 40;
-    if (term_rows < 10) term_rows = 10;
-    if (term_cols > TERM_BUF_COLS) term_cols = TERM_BUF_COLS;
-    if (term_rows > TERM_BUF_ROWS) term_rows = TERM_BUF_ROWS;
-    term_init(&ts->engine, term_rows, term_cols);
     g_term_exec_state = ts;
     term_print_banner();
     g_term_exec_state = 0;

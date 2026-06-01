@@ -1,35 +1,36 @@
 #include <drivers/audio/audio.h>
-#include <kernel_lib/io.h>
+#include <arch/x86_64/io.h>
+#include <drivers/framebuffer/kprint.h>
 
 static uint8_t speaker_was_on = 0;
 
 void beep(uint32_t freq_hz, uint32_t duration_ms)
 {
     if (freq_hz == 0) {
-        // Turn speaker off
+        
         outb(0x61, inb(0x61) & 0xFC);
         speaker_was_on = 0;
         return;
     }
 
-    // 1. Force-enable the speaker bit FIRST (very important in QEMU!)
+    
     uint8_t tmp = inb(0x61);
     if (!(tmp & 0x03)) {
-        outb(0x61, tmp | 0x03);   // bit 0 = speaker data, bit 1 = enable PIT2 output
+        outb(0x61, tmp | 0x03);   
         speaker_was_on = 1;
     }
 
-    // 2. Program PIT Channel 2 (square wave)
+    
     uint32_t divisor = 1193180 / freq_hz;
-    outb(0x43, 0xB6);               // Channel 2, lo/hi, mode 3 (square wave), binary
+    outb(0x43, 0xB6);               
     outb(0x42, divisor & 0xFF);
     outb(0x42, divisor >> 8);
 
-    // 3. Simple calibrated delay (works on all QEMU versions)
-    // ~1 ms per 1 000 000 iterations on typical QEMU speed
+    
+    
     for (volatile uint64_t i = 0; i < duration_ms * 1000000ULL; i++);
 
-    // 4. Turn off (only if we turned it on ourselves)
+    
     if (speaker_was_on) {
         outb(0x61, inb(0x61) & 0xFC);
         speaker_was_on = 0;
@@ -38,22 +39,22 @@ void beep(uint32_t freq_hz, uint32_t duration_ms)
 
 void play_startup_sound(void)
 {
-    beep(523, 180);   // C5
-    beep(659, 180);   // E5
-    beep(784, 220);   // G5
+    beep(523, 180);   
+    beep(659, 180);   
+    beep(784, 220);   
 
-    beep(1047, 18);  // C6 (glänzt wie XP)
-    beep(988, 100);   // B5
+    beep(1047, 18);  
+    beep(988, 100);   
     beep(0, 100);
 }
 
 void play_shutdown_sound(void)
 {
-    beep(1318, 200);  // E6
-    beep(1175, 220);  // D6
-    beep(1047, 260);  // C6
-    beep( 880, 320);  // A5
-    beep( 698, 420);  // F5
+    beep(1318, 200);  
+    beep(1175, 220);  
+    beep(1047, 260);  
+    beep( 880, 320);  
+    beep( 698, 420);  
 
 
     beep(0, 200);

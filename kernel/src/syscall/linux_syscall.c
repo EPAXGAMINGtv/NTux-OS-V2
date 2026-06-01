@@ -8,8 +8,6 @@
 #include <mm/pmm.h>
 #include <mm/umalloc.h>
 #include <mm/vmm.h>
-#include <mm/hhdm.h>
-#include <mm/paging.h>
 #include <lib/string.h>
 
 #define LINUX_ENOSYS 38
@@ -170,10 +168,9 @@ static uint64_t linux_brk(uintptr_t new_brk) {
     if (new_brk == 0) return (uint64_t)g_brk;
     if (new_brk < USER_HEAP_START) return linux_err(LINUX_EINVAL);
     while (g_brk_mapped_end < new_brk) {
-        uintptr_t vaddr = g_brk_mapped_end;
         void* phys = pmm_alloc_page();
         if (!phys) return linux_err(LINUX_ENOMEM);
-        if (vmm_map_current_user_page(vaddr, (uintptr_t)phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER) != 0) {
+        if (!vmm_map_page((void*)g_brk_mapped_end, phys, PAGE_PRESENT | PAGE_WRITABLE | PAGE_USER)) {
             pmm_free_page(phys);
             return linux_err(LINUX_ENOMEM);
         }

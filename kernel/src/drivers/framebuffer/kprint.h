@@ -21,12 +21,22 @@ void kprintcolor(const char* text, uint32_t color);
 void kprint_int(int num);
 void kprint_uint(uint32_t num);
 void kprinthex(uint32_t num);
+void kprint_hex64(uint64_t num);
 void kprintcolor_int32(int num, uint32_t color);
 void kprintcolor_uint32(uint32_t num, uint32_t color);
 void kprintcolorhex(uint32_t num, uint32_t color);
+
+void kprint_set_serial_enabled(int enabled);
+int kprint_get_serial_enabled(void);
+void kprint_set_screen_enabled(int enabled);
+int kprint_get_screen_enabled(void);
+void kprint_set_user_stdout_serial_only(int enabled);
+int kprint_get_user_stdout_serial_only(void);
+void kprint_serial_only(const char* text);
+void kprint_serial_char(char c);
 void kprint_ok(const char* text);
 void kprint_error(const char* text);
-void trigger_blue_screen(void);
+void trigger_blue_screen(uint64_t interrupt_number, uint64_t error_code);
 void kprintf(const char* format, ...);
 
 #endif

@@ -1,6 +1,21 @@
 #include "fb.h"
-#include "kernel_res/fonts/font8x8/font8x8_basic.h"
+#include <data/fonts/font8x8/font8x8_basic.h>
+#include <data/fonts/font8x8/font8x8_control.h>
+#include <data/fonts/font8x8/font8x8_ext_latin.h>
 #include <stdint.h>
+
+static const uint8_t* glyph_for_codepoint(uint32_t cp) {
+    if (cp < 0x20u) {
+        return (const uint8_t*)font8x8_control[cp];
+    }
+    if (cp < 0x80u) {
+        return (const uint8_t*)font8x8_basic[cp];
+    }
+    if (cp >= 0xA0u && cp <= 0xFFu) {
+        return (const uint8_t*)font8x8_ext_latin[cp - 0xA0u];
+    }
+    return (const uint8_t*)font8x8_basic[(int)'?'];
+}
 
 
 void put_pixel_lim(volatile struct limine_framebuffer* fb, int x, int y, uint32_t color) {
@@ -20,8 +35,9 @@ void clear_screen_lim(volatile struct limine_framebuffer* fb, uint32_t color) {
 }
 
 void draw_char_lim(volatile struct limine_framebuffer* fb, int x, int y, char c, uint32_t color) {
+    const uint8_t* glyph = glyph_for_codepoint((uint8_t)c);
     for (int row = 0; row < 8; row++) {
-        uint8_t bits = font8x8_basic[(int)c][row];
+        uint8_t bits = glyph[row];
         for (int col = 0; col < 8; col++) {
             if (bits & (1 << col)) {
                 put_pixel_lim(fb, x + col, y + row, color);
@@ -36,11 +52,48 @@ void draw_text_lim(volatile struct limine_framebuffer* fb, int x, int y, const c
         if (*str == '\n') {
             cursor_x = x;
             y += 8;
+            str++;
+            continue;
         } else {
-            draw_char_lim(fb, cursor_x, y, *str, color);
+            uint32_t cp = 0;
+            unsigned char c0 = (unsigned char)str[0];
+            if (c0 < 0x80u) {
+                cp = c0;
+                str += 1;
+            } else if ((c0 & 0xE0u) == 0xC0u && (str[1] & 0xC0u) == 0x80u) {
+                cp = ((uint32_t)(c0 & 0x1Fu) << 6) | (uint32_t)(str[1] & 0x3Fu);
+                str += 2;
+            } else if ((c0 & 0xF0u) == 0xE0u &&
+                       (str[1] & 0xC0u) == 0x80u &&
+                       (str[2] & 0xC0u) == 0x80u) {
+                cp = ((uint32_t)(c0 & 0x0Fu) << 12) |
+                     ((uint32_t)(str[1] & 0x3Fu) << 6) |
+                     (uint32_t)(str[2] & 0x3Fu);
+                str += 3;
+            } else if ((c0 & 0xF8u) == 0xF0u &&
+                       (str[1] & 0xC0u) == 0x80u &&
+                       (str[2] & 0xC0u) == 0x80u &&
+                       (str[3] & 0xC0u) == 0x80u) {
+                cp = ((uint32_t)(c0 & 0x07u) << 18) |
+                     ((uint32_t)(str[1] & 0x3Fu) << 12) |
+                     ((uint32_t)(str[2] & 0x3Fu) << 6) |
+                     (uint32_t)(str[3] & 0x3Fu);
+                str += 4;
+            } else {
+                cp = (uint32_t)'?';
+                str += 1;
+            }
+            const uint8_t* glyph = glyph_for_codepoint(cp);
+            for (int row = 0; row < 8; row++) {
+                uint8_t bits = glyph[row];
+                for (int col = 0; col < 8; col++) {
+                    if (bits & (1 << col)) {
+                        put_pixel_lim(fb, cursor_x + col, y + row, color);
+                    }
+                }
+            }
             cursor_x += 8;
         }
-        str++;
     }
 }
 
@@ -48,8 +101,9 @@ void draw_text_lim(volatile struct limine_framebuffer* fb, int x, int y, const c
 
 
 void draw_scaled_char_lim(volatile struct limine_framebuffer* fb, int x, int y, const char* char_lines[8], uint32_t color, int scale) {
+    const uint8_t* glyph = glyph_for_codepoint((uint8_t)(*char_lines));
     for (int row = 0; row < 8; row++) {   
-        uint8_t bits = font8x8_basic[(int)(*char_lines)][row];
+        uint8_t bits = glyph[row];
         for (int col = 0; col < 8; col++) {  
             if (bits & (1 << col)) {  
             for (int dy = 0; dy < scale; dy++) {
@@ -61,19 +115,63 @@ void draw_scaled_char_lim(volatile struct limine_framebuffer* fb, int x, int y, 
         }
     }
 }
+
 void draw_scaled_text_lim(volatile struct limine_framebuffer* fb, int x, int y, const char* str, uint32_t color, int scale) {
+    if (!str || scale <= 0) return;
     int cursor_x = x;
     while (*str) {
-        if (*str == '\n') {  
+        if (*str == '\n') {
             cursor_x = x;
-            y += 8 * scale;  
-        } else {
-            draw_scaled_char_lim(fb, cursor_x, y, font8x8_basic[(int)(*str)], color, scale);  
-            cursor_x += 8 * scale;  
+            y += 8 * scale;
+            str++;
+            continue;
         }
-        str++;
+        uint32_t cp = 0;
+        unsigned char c0 = (unsigned char)str[0];
+        if (c0 < 0x80u) {
+            cp = c0;
+            str += 1;
+        } else if ((c0 & 0xE0u) == 0xC0u && (str[1] & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x1Fu) << 6) | (uint32_t)(str[1] & 0x3Fu);
+            str += 2;
+        } else if ((c0 & 0xF0u) == 0xE0u &&
+                   (str[1] & 0xC0u) == 0x80u &&
+                   (str[2] & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x0Fu) << 12) |
+                 ((uint32_t)(str[1] & 0x3Fu) << 6) |
+                 (uint32_t)(str[2] & 0x3Fu);
+            str += 3;
+        } else if ((c0 & 0xF8u) == 0xF0u &&
+                   (str[1] & 0xC0u) == 0x80u &&
+                   (str[2] & 0xC0u) == 0x80u &&
+                   (str[3] & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x07u) << 18) |
+                 ((uint32_t)(str[1] & 0x3Fu) << 12) |
+                 ((uint32_t)(str[2] & 0x3Fu) << 6) |
+                 (uint32_t)(str[3] & 0x3Fu);
+            str += 4;
+        } else {
+            cp = (uint32_t)'?';
+            str += 1;
+        }
+
+        const uint8_t* glyph = glyph_for_codepoint(cp);
+        for (int row = 0; row < 8; row++) {
+            uint8_t bits = glyph[row];
+            for (int col = 0; col < 8; col++) {
+                if (bits & (1 << col)) {
+                    for (int dy = 0; dy < scale; dy++) {
+                        for (int dx = 0; dx < scale; dx++) {
+                            put_pixel_lim(fb, cursor_x + col * scale + dx, y + row * scale + dy, color);
+                        }
+                    }
+                }
+            }
+        }
+        cursor_x += 8 * scale;
     }
 }
+
 
 
 void draw_square_lim(volatile struct limine_framebuffer* fb, int x, int y, int size, uint32_t color) {
@@ -84,19 +182,19 @@ void draw_square_lim(volatile struct limine_framebuffer* fb, int x, int y, int s
 
 
 void draw_image_from_uint64_t(volatile struct limine_framebuffer* fb, uint64_t* background, int img_width, int img_height) {
-    // Size of framebuffer
+    
     int fb_width = fb->width;
     int fb_height = fb->height;
 
-    // Going through every pixel in the framebuffer
+    
     for (int y = 0; y < fb_height; y++) {
         for (int x = 0; x < fb_width; x++) {
-            // Make sure we don't go beyond the bounds of the original image
+            
             if (x < img_width && y < img_height) {
-                // Get the color from the background array
+                
                 uint64_t color = background[y * img_width + x];
 
-                // Draw the pixel to the framebuffer
+                
                 put_pixel_lim(fb, x, y, color);
             }
         }

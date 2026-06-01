@@ -11,8 +11,6 @@
 #include <stb_image.h>
 
 #define IMAGE_MAX_FILE_BYTES (64ull * 1024ull * 1024ull)
-#define IMAGE_MAX_DIM 16384
-#define IMAGE_MAX_PIXELS (268u * 1000000u)
 
 int image_decode_memory(const void* data, size_t len, int desired_channels, image_t* out) {
     if (!out) return -1;
@@ -21,11 +19,6 @@ int image_decode_memory(const void* data, size_t len, int desired_channels, imag
     if (desired_channels != 0 && desired_channels != 3 && desired_channels != 4) return -2;
 
     int w, h, comp;
-    if (stbi_info_from_memory((const stbi_uc*)data, (int)len, &w, &h, &comp)) {
-        if (w <= 0 || h <= 0 || w > IMAGE_MAX_DIM || h > IMAGE_MAX_DIM) return -3;
-        if ((int64_t)w * (int64_t)h > IMAGE_MAX_PIXELS) return -3;
-    }
-
     int req = desired_channels;
     stbi_uc* pixels = stbi_load_from_memory((const stbi_uc*)data, (int)len, &w, &h, &comp, req);
     if (!pixels) return -1;
