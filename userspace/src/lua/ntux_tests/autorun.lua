@@ -1,0 +1,5 @@
+print("[autorun] starting Lua-Tests")
+loadfile("/boot/boot/modules/hello.lua")()
+loadfile("/boot/boot/modules/fib.lua")()
+loadfile("/boot/boot/modules/fs.lua")()
+print("[autorun] finished")()
