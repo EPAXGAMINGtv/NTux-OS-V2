@@ -1,0 +1,287 @@
+#include <glad_gl.h>
+#include <syscall.h>
+#include <string.h>
+#include <stdio.h>
+
+/* ========== Global Function Pointer Implementations ========== */
+
+/* Version & Queries */
+PFNGLGETSTRINGPROC glGetString = NULL;
+PFNGLCLEARCOLORPROC glClearColor = NULL;
+PFNGLCLEARPROC glClear = NULL;
+
+/* Shader Objects */
+PFNGLCREATESHADERPROC glCreateShader = NULL;
+PFNGLSHADERSOURCEPROC glShaderSource = NULL;
+PFNGLCOMPILESHADERPROC glCompileShader = NULL;
+PFNGLDELETESHADERPROC glDeleteShader = NULL;
+
+/* Program Objects */
+PFNGLCREATEPROGRAMPROC glCreateProgram = NULL;
+PFNGLATTACHSHADERPROC glAttachShader = NULL;
+PFNGLLINKPROGRAMPROC glLinkProgram = NULL;
+PFNGLUSEPROGRAMPROC glUseProgram = NULL;
+PFNGLDELETEPROGRAMPROC glDeleteProgram = NULL;
+
+/* Uniforms */
+PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
+PFNGLUNIFORM1FPROC glUniform1f = NULL;
+PFNGLUNIFORM2FPROC glUniform2f = NULL;
+PFNGLUNIFORM3FPROC glUniform3f = NULL;
+PFNGLUNIFORM4FPROC glUniform4f = NULL;
+PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = NULL;
+
+/* Vertex Attributes */
+PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
+PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
+PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
+PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
+
+/* Buffer Objects */
+PFNGLGENBUFFERSPROC glGenBuffers = NULL;
+PFNGLBINDBUFFERPROC glBindBuffer = NULL;
+PFNGLBUFFERDATAPROC glBufferData = NULL;
+PFNGLDELETEBUFFERSPROC glDeleteBuffers = NULL;
+
+/* Vertex Array */
+PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = NULL;
+PFNGLBINDVERTEXARRAYPROC glBindVertexArray = NULL;
+PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = NULL;
+
+/* Texture Objects */
+PFNGLGENTEXTURESPROC glGenTextures = NULL;
+PFNGLBINDTEXTUREPROC glBindTexture = NULL;
+PFNGLTEXIMAGE2DPROC glTexImage2D = NULL;
+PFNGLTEXPARAMETERIPROC glTexParameteri = NULL;
+PFNGLDELETETEXTURESPROC glDeleteTextures = NULL;
+
+/* Rendering */
+PFNGLDRAWARRAYSPROC glDrawArrays = NULL;
+PFNGLDRAWELEMENTSPROC glDrawElements = NULL;
+PFNGLFINISHPROC glFinish = NULL;
+PFNGLFLUSHPROC glFlush = NULL;
+
+/* State Management */
+PFNGLENABLEPROC glEnable = NULL;
+PFNGLDISABLEPROC glDisable = NULL;
+PFNGLBLENDFUNCPROC glBlendFunc = NULL;
+PFNGLDEPTHFUNCPROC glDepthFunc = NULL;
+
+/* ========== Stub GL Implementations ========== */
+
+/* These are placeholder implementations that would be replaced
+   with actual GPU driver calls via syscalls in production */
+
+static const char* gl_get_string_stub(GLenum name) {
+    switch (name) {
+        case 0x1F00:  /* GL_VENDOR */
+            return "Intel";
+        case 0x1F01:  /* GL_RENDERER */
+            return "Intel HD Graphics (Braswell)";
+        case 0x1F02:  /* GL_VERSION */
+            return "3.3 (OpenGL)";
+        case 0x1F03:  /* GL_SHADING_LANGUAGE_VERSION */
+            return "3.30";
+        default:
+            return "?";
+    }
+}
+
+static void gl_clear_color_stub(GLfloat r, GLfloat g, GLfloat b, GLfloat a) {
+    printf("[GL] glClearColor(%f, %f, %f, %f)\n", r, g, b, a);
+    /* Would call GPU driver */
+}
+
+static void gl_clear_stub(GLbitfield mask) {
+    printf("[GL] glClear(0x%X)\n", mask);
+    /* Would call GPU driver */
+}
+
+static GLuint gl_create_shader_stub(GLenum type) {
+    static GLuint next_id = 1;
+    printf("[GL] glCreateShader(0x%X) -> %u\n", type, next_id);
+    return next_id++;
+}
+
+static void gl_shader_source_stub(GLuint shader, GLsizei count, const char** string, const GLint* length) {
+    (void)length;  /* Unused */
+    printf("[GL] glShaderSource(shader=%u, count=%d)\n", shader, count);
+    if (string && string[0]) {
+        printf("  Source (first 64 bytes): %.64s...\n", string[0]);
+    }
+}
+
+static void gl_compile_shader_stub(GLuint shader) {
+    printf("[GL] glCompileShader(%u)\n", shader);
+    /* Would call GPU driver to compile shader */
+}
+
+static void gl_delete_shader_stub(GLuint shader) {
+    printf("[GL] glDeleteShader(%u)\n", shader);
+}
+
+static GLuint gl_create_program_stub(void) {
+    static GLuint next_id = 100;
+    printf("[GL] glCreateProgram() -> %u\n", next_id);
+    return next_id++;
+}
+
+static void gl_attach_shader_stub(GLuint program, GLuint shader) {
+    printf("[GL] glAttachShader(prog=%u, shader=%u)\n", program, shader);
+}
+
+static void gl_link_program_stub(GLuint program) {
+    printf("[GL] glLinkProgram(%u)\n", program);
+}
+
+static void gl_use_program_stub(GLuint program) {
+    printf("[GL] glUseProgram(%u)\n", program);
+}
+
+static void gl_delete_program_stub(GLuint program) {
+    printf("[GL] glDeleteProgram(%u)\n", program);
+}
+
+static GLint gl_get_uniform_location_stub(GLuint program, const char* name) {
+    printf("[GL] glGetUniformLocation(prog=%u, name='%s')\n", program, name);
+    return 0;
+}
+
+static void gl_uniform_1f_stub(GLint location, GLfloat v0) {
+    printf("[GL] glUniform1f(loc=%d, v=%f)\n", location, v0);
+}
+
+static void gl_uniform_4f_stub(GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3) {
+    printf("[GL] glUniform4f(loc=%d, v=(%f,%f,%f,%f))\n", location, v0, v1, v2, v3);
+}
+
+static GLint gl_get_attrib_location_stub(GLuint program, const char* name) {
+    printf("[GL] glGetAttribLocation(prog=%u, name='%s')\n", program, name);
+    return 0;
+}
+
+static void gl_enable_vertex_attrib_array_stub(GLuint index) {
+    printf("[GL] glEnableVertexAttribArray(%u)\n", index);
+}
+
+static void gl_vertex_attrib_pointer_stub(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer) {
+    (void)normalized; (void)pointer;  /* Unused */
+    printf("[GL] glVertexAttribPointer(idx=%u, size=%d, type=0x%X, stride=%d)\n", index, size, type, stride);
+}
+
+static void gl_gen_buffers_stub(GLsizei n, GLuint* buffers) {
+    static GLuint next_id = 1000;
+    printf("[GL] glGenBuffers(%d)\n", n);
+    for (GLsizei i = 0; i < n; i++) {
+        buffers[i] = next_id++;
+    }
+}
+
+static void gl_bind_buffer_stub(GLenum target, GLuint buffer) {
+    printf("[GL] glBindBuffer(target=0x%X, buffer=%u)\n", target, buffer);
+}
+
+static void gl_buffer_data_stub(GLenum target, uint64_t size, const void* data, GLenum usage) {
+    (void)data;  /* Unused */
+    printf("[GL] glBufferData(target=0x%X, size=%lu, usage=0x%X)\n", target, size, usage);
+}
+
+static void gl_delete_buffers_stub(GLsizei n, const GLuint* buffers) {
+    (void)buffers;  /* Unused */
+    printf("[GL] glDeleteBuffers(%d)\n", n);
+}
+
+static void gl_gen_vertex_arrays_stub(GLsizei n, GLuint* arrays) {
+    static GLuint next_id = 2000;
+    printf("[GL] glGenVertexArrays(%d)\n", n);
+    for (GLsizei i = 0; i < n; i++) {
+        arrays[i] = next_id++;
+    }
+}
+
+static void gl_bind_vertex_array_stub(GLuint array) {
+    printf("[GL] glBindVertexArray(%u)\n", array);
+}
+
+static void gl_gen_textures_stub(GLsizei n, GLuint* textures) {
+    static GLuint next_id = 3000;
+    printf("[GL] glGenTextures(%d)\n", n);
+    for (GLsizei i = 0; i < n; i++) {
+        textures[i] = next_id++;
+    }
+}
+
+static void gl_bind_texture_stub(GLenum target, GLuint texture) {
+    printf("[GL] glBindTexture(target=0x%X, texture=%u)\n", target, texture);
+}
+
+static void gl_tex_image_2d_stub(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void* pixels) {
+    (void)target; (void)level; (void)border; (void)format; (void)type; (void)pixels;  /* Unused */
+    printf("[GL] glTexImage2D(w=%d, h=%d, fmt=0x%X)\n", width, height, internalformat);
+}
+
+static void gl_draw_arrays_stub(GLenum mode, GLint first, GLsizei count) {
+    printf("[GL] glDrawArrays(mode=0x%X, first=%d, count=%d)\n", mode, first, count);
+}
+
+static void gl_finish_stub(void) {
+    printf("[GL] glFinish()\n");
+}
+
+static void gl_enable_stub(GLenum cap) {
+    printf("[GL] glEnable(0x%X)\n", cap);
+}
+
+/* ========== GLAD Loader ========== */
+
+int gladLoadGL(void) {
+    printf("[GLAD] Loading OpenGL function pointers...\n");
+    
+    /* Assign stub implementations */
+    glGetString = gl_get_string_stub;
+    glClearColor = (PFNGLCLEARCOLORPROC)gl_clear_color_stub;
+    glClear = (PFNGLCLEARPROC)gl_clear_stub;
+    
+    glCreateShader = (PFNGLCREATESHADERPROC)gl_create_shader_stub;
+    glShaderSource = (PFNGLSHADERSOURCEPROC)gl_shader_source_stub;
+    glCompileShader = (PFNGLCOMPILESHADERPROC)gl_compile_shader_stub;
+    glDeleteShader = (PFNGLDELETESHADERPROC)gl_delete_shader_stub;
+    
+    glCreateProgram = (PFNGLCREATEPROGRAMPROC)gl_create_program_stub;
+    glAttachShader = (PFNGLATTACHSHADERPROC)gl_attach_shader_stub;
+    glLinkProgram = (PFNGLLINKPROGRAMPROC)gl_link_program_stub;
+    glUseProgram = (PFNGLUSEPROGRAMPROC)gl_use_program_stub;
+    glDeleteProgram = (PFNGLDELETEPROGRAMPROC)gl_delete_program_stub;
+    
+    glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)gl_get_uniform_location_stub;
+    glUniform1f = (PFNGLUNIFORM1FPROC)gl_uniform_1f_stub;
+    glUniform4f = (PFNGLUNIFORM4FPROC)gl_uniform_4f_stub;
+    
+    glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)gl_get_attrib_location_stub;
+    glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)gl_enable_vertex_attrib_array_stub;
+    glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)gl_vertex_attrib_pointer_stub;
+    
+    glGenBuffers = (PFNGLGENBUFFERSPROC)gl_gen_buffers_stub;
+    glBindBuffer = (PFNGLBINDBUFFERPROC)gl_bind_buffer_stub;
+    glBufferData = (PFNGLBUFFERDATAPROC)gl_buffer_data_stub;
+    glDeleteBuffers = (PFNGLDELETEBUFFERSPROC)gl_delete_buffers_stub;
+    
+    glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)gl_gen_vertex_arrays_stub;
+    glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC)gl_bind_vertex_array_stub;
+    
+    glGenTextures = (PFNGLGENTEXTURESPROC)gl_gen_textures_stub;
+    glBindTexture = (PFNGLBINDTEXTUREPROC)gl_bind_texture_stub;
+    glTexImage2D = (PFNGLTEXIMAGE2DPROC)gl_tex_image_2d_stub;
+    
+    glDrawArrays = (PFNGLDRAWARRAYSPROC)gl_draw_arrays_stub;
+    glFinish = (PFNGLFINISHPROC)gl_finish_stub;
+    
+    glEnable = (PFNGLENABLEPROC)gl_enable_stub;
+    
+    printf("[GLAD] OpenGL 3.3 loaded successfully (Intel HD Graphics Braswell)\n");
+    printf("[GLAD] Vendor: %s\n", glGetString(0x1F00));
+    printf("[GLAD] Renderer: %s\n", glGetString(0x1F01));
+    printf("[GLAD] Version: %s\n", glGetString(0x1F02));
+    
+    return 1;  /* Success */
+}

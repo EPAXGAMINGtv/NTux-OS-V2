@@ -1,0 +1,1122 @@
+#include <syscall/int80.h>
+#include <syscall/deskapi.h>
+
+#include <sched/thread.h>
+#include <drivers/framebuffer/fb.h>
+#include <drivers/framebuffer/kprint.h>
+#include <drivers/gpu/gpu.h>
+#include <drivers/gpu/gpu_ioctl.h>
+#include <drivers/input/input.h>
+#include <drivers/input/console_input.h>
+#include <drivers/ps2/keyboard.h>
+#include <drivers/ps2/mouse.h>
+#include <interrupt/apic/apic.h>
+#include <drivers/cmos/cmos.h>
+#include <elf/module_loader.h>
+#include <fs/fd.h>
+#include <fs/fs.h>
+#include <net/net_priv.h>
+#include <interrupt/timer.h>
+#include <arch/x86_64/io.h>
+
+static uint64_t g_gpu_blit_count = 0;
+#include <lib/info.h>
+#include <mm/kmalloc.h>
+#include <mm/pmm.h>
+#include <lib/string.h>
+
+typedef struct {
+    char name[64];
+    uint8_t is_dir;
+    uint8_t _pad[7];
+    uint64_t size;
+} int80_fs_dirent_t;
+
+#define COM1_PORT 0x3F8
+
+static uint8_t g_serial_init_done = 0;
+
+static uint32_t scale_chan8_to_n(uint8_t v, uint8_t bits) {
+    if (bits == 0) return 0;
+    if (bits >= 8) {
+        return ((uint32_t)v) << (bits - 8);
+    }
+    uint32_t maxv = (1u << bits) - 1u;
+    return ((uint32_t)v * maxv + 127u) / 255u;
+}
+
+static uint32_t pack_rgb_for_fb(uint8_t r, uint8_t g, uint8_t b, volatile struct limine_framebuffer *fb) {
+    uint32_t pr = scale_chan8_to_n(r, fb->red_mask_size) << fb->red_mask_shift;
+    uint32_t pg = scale_chan8_to_n(g, fb->green_mask_size) << fb->green_mask_shift;
+    uint32_t pb = scale_chan8_to_n(b, fb->blue_mask_size) << fb->blue_mask_shift;
+    return pr | pg | pb;
+}
+
+static void serial_init_once(void) {
+    if (g_serial_init_done) return;
+    outb(COM1_PORT + 1, 0x00);
+    outb(COM1_PORT + 3, 0x80);
+    outb(COM1_PORT + 0, 0x01);
+    outb(COM1_PORT + 1, 0x00);
+    outb(COM1_PORT + 3, 0x03);
+    outb(COM1_PORT + 2, 0xC7);
+    outb(COM1_PORT + 4, 0x0B);
+    g_serial_init_done = 1;
+}
+
+static int serial_try_getchar(char* out) {
+    if (!out) return 0;
+    serial_init_once();
+    if ((inb(COM1_PORT + 5) & 0x01) == 0) return 0;
+    uint8_t c = inb(COM1_PORT + 0);
+    if (c == '\r') c = '\n';
+    *out = (char)c;
+    return 1;
+}
+
+static int mul_overflow_size(size_t a, size_t b, size_t* out) {
+    if (!out) return 0;
+    if (a == 0 || b == 0) {
+        *out = 0;
+        return 0;
+    }
+    if (a > ((size_t)-1) / b) return 1;
+    *out = a * b;
+    return 0;
+}
+
+static int current_user_range(uintptr_t* out_start, uintptr_t* out_end) {
+    uint64_t start = 0;
+    uint64_t end = 0;
+    if (thread_get_current_user_range(&start, &end) != 0 || start == 0 || end <= start) {
+        if (out_start) *out_start = 0;
+        if (out_end) *out_end = UINTPTR_MAX;
+        return 0;
+    }
+    if (out_start) *out_start = (uintptr_t)start;
+    if (out_end) *out_end = (uintptr_t)end;
+    return 1;
+}
+
+static int user_ptr_range_ok(const void* ptr, size_t len) {
+    if (len == 0) return 1;
+    if (!ptr) return 0;
+    uintptr_t start = 0;
+    uintptr_t end = 0;
+    int restricted = current_user_range(&start, &end);
+    uintptr_t p = (uintptr_t)ptr;
+    uintptr_t last = p + (uintptr_t)(len - 1u);
+    if (last < p) return 0;
+    if (!restricted) return 1;
+    return p >= start && last < end;
+}
+
+static int user_cstr_ok(const char* s, size_t max_scan) {
+    if (!s || max_scan == 0) return 0;
+    uintptr_t start = 0;
+    uintptr_t end = 0;
+    int restricted = current_user_range(&start, &end);
+    uintptr_t p = (uintptr_t)s;
+    if (restricted && (p < start || p >= end)) return 0;
+
+    size_t limit = max_scan;
+    if (restricted) {
+        size_t room = (size_t)(end - p);
+        if (room < limit) limit = room;
+    }
+    if (limit == 0) return 0;
+
+    for (size_t i = 0; i < limit; ++i) {
+        if (s[i] == '\0') return 1;
+    }
+    return 0;
+}
+
+static int int80_current_tid(void) {
+    int tid = current_thread_id;
+    if (tid < 0 || tid >= MAX_THREADS) return -1;
+    if (!thread_list[tid]) return -1;
+    return tid;
+}
+
+static int console_input_owner_is_current(void) {
+    int tid = int80_current_tid();
+    if (tid < 0) return 0;
+    return console_input_owner_is_tid(tid);
+}
+
+static void console_input_release_if_current(void) {
+    int tid = int80_current_tid();
+    if (tid < 0) return;
+    console_input_release_if_tid(tid);
+}
+
+static int console_input_claim_or_is_current_for_current(void) {
+    int tid = int80_current_tid();
+    if (tid < 0) return 0;
+    return console_input_claim_or_is_current(tid);
+}
+
+uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
+    if (!regs) return 0;
+
+    switch (regs->rax) {
+        case INT80_WRITE: {
+            const char *buf = (const char *)regs->rdi;
+            uint64_t len = regs->rsi;
+            if (!buf || !user_ptr_range_ok(buf, (size_t)len)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (kprint_get_user_stdout_serial_only()) {
+                for (uint64_t i = 0; i < len; ++i) {
+                    kprint_serial_char(buf[i]);
+                }
+            } else {
+                for (uint64_t i = 0; i < len; ++i) {
+                    char c[2] = {buf[i], 0};
+                    kprint(c);
+                }
+            }
+            regs->rax = len;
+            return 0;
+        }
+        case INT80_EXIT:
+            regs->rax = 0;
+            return 1;
+        case INT80_PUTCHAR: {
+            char c[2] = {(char)regs->rdi, 0};
+            if (kprint_get_user_stdout_serial_only()) {
+                kprint_serial_char(c[0]);
+            } else {
+                kprint(c);
+            }
+            regs->rax = 1;
+            return 0;
+        }
+        case INT80_GET_TICKS:
+            regs->rax = get_tick_count();
+            return 0;
+        case INT80_WAIT_TICKS: {
+            uint64_t wait_for = regs->rdi;
+            if (wait_for == 0) {
+                regs->rax = 0;
+                return 0;
+            }
+            uint64_t wake = get_tick_count() + wait_for;
+            thread_lock_global();
+            int tid = current_thread_id;
+            if (tid >= 0 && tid < MAX_THREADS && thread_list[tid]) {
+                thread_list[tid]->wake_tick = wake;
+                if (thread_list[tid]->state != THREAD_BLOCKED) {
+                    thread_list[tid]->state = THREAD_BLOCKED;
+                    rq_remove(thread_list[tid]);
+                    g_thread_blocked_count++;
+                }
+            }
+            thread_unlock_global();
+            scheduler();
+            /* After scheduler: either a context switch happened (we were
+             * BLOCKED → READY → RUNNING) or no switch (still BLOCKED).
+             * In either case, wait until wake time and fix up state. */
+            thread_lock_global();
+            if (tid >= 0 && tid < MAX_THREADS && thread_list[tid]) {
+                thread_t* t = thread_list[tid];
+                while (t->state == THREAD_BLOCKED && get_tick_count() < wake) {
+                    thread_unlock_global();
+                    __asm__ volatile("hlt");
+                    thread_lock_global();
+                    if (tid < 0 || tid >= MAX_THREADS) break;
+                    t = thread_list[tid];
+                    if (!t) break;
+                }
+                if (t) {
+                    t->state = THREAD_RUNNING;
+                    t->wake_tick = 0;
+                    rq_remove(t);
+                    current_thread_id = tid;
+                }
+            }
+            thread_unlock_global();
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_CLEAR_SCREEN: {
+            if (!framebuffer_request.response || framebuffer_request.response->framebuffer_count < 1) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            volatile struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
+            clear_screen_lim(fb, (uint32_t)regs->rdi);
+            if (g_printer.cursor) {
+                g_printer.cursor->x = 0;
+                g_printer.cursor->y = 0;
+            }
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GETCHAR: {
+            if (!console_input_claim_or_is_current_for_current()) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            char c = 0;
+            if (input_try_getchar(&c) != 0) {
+                regs->rax = (uint64_t)(uint8_t)c;
+            } else {
+                if (serial_try_getchar(&c)) {
+                    regs->rax = (uint64_t)(uint8_t)c;
+                    return 0;
+                }
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            return 0;
+        }
+        case INT80_REBOOT:
+            system_reboot();
+            regs->rax = 0;
+            return 0;
+        case INT80_SHUTDOWN:
+            system_shutdown();
+            regs->rax = 0;
+            return 0;
+        case INT80_YIELD:
+            thread_yield();
+            regs->rax = 0;
+            return 0;
+        case INT80_CONSOLE_RELEASE:
+            console_input_release_if_current();
+            regs->rax = 0;
+            return 0;
+        case INT80_CONSOLE_IS_FREE: {
+            regs->rax = console_input_is_free() ? 1u : 0u;
+            return 0;
+        }
+        case INT80_CONSOLE_CLAIM: {
+            regs->rax = console_input_claim_or_is_current_for_current() ? 0u : (uint64_t)-1;
+            return 0;
+        }
+        case INT80_TASK_ADD: {
+            const char* path = (const char*)(uintptr_t)regs->rdi;
+            const char* status = 0;
+            if (!user_cstr_ok(path, 512u) || !path[0]) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (console_input_owner_is_current()) {
+                console_input_release_if_current();
+            }
+            if (!module_loader_start_elf_ring3(path, &status)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            int tid = module_loader_last_elf_tid();
+            regs->rax = (tid >= 0) ? (uint64_t)tid : 0u;
+            return 0;
+        }
+        case INT80_TASK_ADD_MODULE: {
+            const char* token = (const char*)(uintptr_t)regs->rdi;
+            const char* status = 0;
+            if (!user_cstr_ok(token, 128u) || !token[0]) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (console_input_owner_is_current()) {
+                console_input_release_if_current();
+            }
+            if (!module_loader_start_module_ring3(token, &status)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            int tid = module_loader_last_hello_tid();
+            regs->rax = (tid >= 0) ? (uint64_t)tid : 0u;
+            return 0;
+        }
+        case INT80_TASK_LIST: {
+            int80_task_info_t* out = (int80_task_info_t*)(uintptr_t)regs->rdi;
+            size_t max_entries = (size_t)regs->rsi;
+            uint64_t* out_count_ptr = (uint64_t*)(uintptr_t)regs->rdx;
+            size_t total = 0;
+            size_t out_bytes = 0;
+
+            if (max_entries > 0 && (!out || mul_overflow_size(max_entries, sizeof(*out), &out_bytes) || !user_ptr_range_ok(out, out_bytes))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (out_count_ptr && !user_ptr_range_ok(out_count_ptr, sizeof(*out_count_ptr))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+
+            thread_lock_global();
+            for (size_t i = 0; i < MAX_THREADS; ++i) {
+                thread_t* t = thread_list[i];
+                if (!t) continue;
+                if (out && total < max_entries) {
+                    out[total].id = t->id;
+                    memset(out[total].name, 0, sizeof(out[total].name));
+                    if (t->name[0]) {
+                        strncpy(out[total].name, t->name, sizeof(out[total].name) - 1);
+                        out[total].name[sizeof(out[total].name) - 1] = '\0';
+                    }
+                    out[total].state = (uint32_t)t->state;
+                    out[total].running_core = 0;
+                    out[total].affinity_core = 0;
+                    out[total].uid = t->uid;
+                    out[total].active = 1u;
+                    out[total].cpu_ticks = t->cpu_ticks;
+                    if (t->user_vend > t->user_vstart) {
+                        out[total].mem_bytes = (uint64_t)(t->user_vend - t->user_vstart);
+                    } else {
+                        out[total].mem_bytes = 0u;
+                    }
+                }
+                total++;
+            }
+            thread_unlock_global();
+
+            if (out_count_ptr) *out_count_ptr = (uint64_t)total;
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_TASK_KILL: {
+            int tid = (int)regs->rdi;
+            regs->rax = (uint64_t)thread_kill(tid);
+            return 0;
+        }
+        case INT80_MODULE_LIST: {
+            ntux_module_info_t* out = (ntux_module_info_t*)(uintptr_t)regs->rdi;
+            size_t max_entries = (size_t)regs->rsi;
+            uint64_t* out_count_ptr = (uint64_t*)(uintptr_t)regs->rdx;
+            size_t out_bytes = 0;
+
+            if (max_entries > 0 && (!out || mul_overflow_size(max_entries, sizeof(*out), &out_bytes) || !user_ptr_range_ok(out, out_bytes))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (out_count_ptr && !user_ptr_range_ok(out_count_ptr, sizeof(*out_count_ptr))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+
+            regs->rax = (uint64_t)module_loader_list(out, max_entries, out_count_ptr);
+            return 0;
+        }
+        case INT80_GET_GPU_INFO: {
+            int80_gpu_info_t* out = (int80_gpu_info_t*)(uintptr_t)regs->rdi;
+            if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            const gpu_device_t* gpu = gpu_get_primary();
+            memset(out, 0, sizeof(*out));
+            if (gpu && gpu->name) {
+                strncpy(out->name, gpu->name, sizeof(out->name) - 1);
+                out->name[sizeof(out->name) - 1] = '\0';
+                out->width = gpu->info.width;
+                out->height = gpu->info.height;
+                out->bpp = gpu->info.bpp;
+                out->fb_size = (uint32_t)gpu->info.fb_size;
+            } else {
+                strncpy(out->name, "bootfb", sizeof(out->name) - 1);
+                out->name[sizeof(out->name) - 1] = '\0';
+                if (framebuffer_request.response && framebuffer_request.response->framebuffer_count > 0) {
+                    volatile struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
+                    out->width = (uint32_t)fb->width;
+                    out->height = (uint32_t)fb->height;
+                    out->bpp = (uint32_t)fb->bpp;
+                    out->fb_size = (uint32_t)(fb->pitch * fb->height);
+                }
+            }
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GET_GPU_STATS: {
+            int80_gpu_stats_t* out = (int80_gpu_stats_t*)(uintptr_t)regs->rdi;
+            if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            memset(out, 0, sizeof(*out));
+            const gpu_device_t* gpu = gpu_get_primary();
+            if (gpu) {
+                gpu_stats_t stats = gpu_get_stats(gpu);
+                out->blit_count = stats.blit_count;
+                out->blit_errors = stats.blit_errors;
+                out->blit_cycles = stats.blit_cycles;
+                out->current_memory_usage = stats.current_memory_usage;
+                out->max_memory_usage = stats.max_memory_usage;
+                out->memory_allocations = stats.memory_allocations;
+            }
+            out->ticks = get_tick_count();
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_SET_UID: {
+            regs->rax = (uint64_t)thread_set_current_uid((uint32_t)regs->rdi);
+            return 0;
+        }
+        case INT80_GET_UID: {
+            regs->rax = (uint64_t)thread_get_current_uid();
+            return 0;
+        }
+        case INT80_FS_EXISTS: {
+            const char* path = (const char*)(uintptr_t)regs->rdi;
+            if (!user_cstr_ok(path, 1024u)) {
+                regs->rax = 0;
+                return 0;
+            }
+            regs->rax = fs_exists(path) ? 1u : 0u;
+            return 0;
+        }
+        case INT80_FS_MKDIR: {
+            const char* parent = (const char*)(uintptr_t)regs->rdi;
+            const char* name = (const char*)(uintptr_t)regs->rsi;
+            if (!user_cstr_ok(parent, 1024u) || !user_cstr_ok(name, 256u)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fs_mkdir(parent, name);
+            return 0;
+        }
+        case INT80_FS_CREATE_FILE: {
+            const char* parent = (const char*)(uintptr_t)regs->rdi;
+            const char* name = (const char*)(uintptr_t)regs->rsi;
+            const void* data = (const void*)(uintptr_t)regs->rdx;
+            size_t len = (size_t)regs->rcx;
+            if (!user_cstr_ok(parent, 1024u) || !user_cstr_ok(name, 256u) || (len > 0 && !user_ptr_range_ok(data, len))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fs_create_file(parent, name, data, len);
+            return 0;
+        }
+        case INT80_FS_WRITE_FILE: {
+            const char* path = (const char*)(uintptr_t)regs->rdi;
+            const void* data = (const void*)(uintptr_t)regs->rsi;
+            size_t len = (size_t)regs->rdx;
+            if (!user_cstr_ok(path, 1024u) || (len > 0 && !user_ptr_range_ok(data, len))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fs_write_file(path, data, len);
+            return 0;
+        }
+        case INT80_FS_READ_FILE: {
+            const char* path = (const char*)(uintptr_t)regs->rdi;
+            void* out = (void*)(uintptr_t)regs->rsi;
+            size_t out_cap = (size_t)regs->rdx;
+            uint64_t* out_len_ptr = (uint64_t*)(uintptr_t)regs->rcx;
+            size_t out_len = 0;
+            if (!user_cstr_ok(path, 1024u) ||
+                (out_cap > 0 && !user_ptr_range_ok(out, out_cap)) ||
+                (out_len_ptr && !user_ptr_range_ok(out_len_ptr, sizeof(*out_len_ptr)))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            int rc = fs_read_file(path, out, out_cap, &out_len);
+            if (out_len_ptr) *out_len_ptr = (uint64_t)out_len;
+            regs->rax = (uint64_t)rc;
+            return 0;
+        }
+        case INT80_FS_LIST_DIR: {
+            const char* path = (const char*)(uintptr_t)regs->rdi;
+            int80_fs_dirent_t* out = (int80_fs_dirent_t*)(uintptr_t)regs->rsi;
+            size_t max_entries = (size_t)regs->rdx;
+            uint64_t* out_count_ptr = (uint64_t*)(uintptr_t)regs->rcx;
+            size_t out_count = 0;
+            size_t out_bytes = 0;
+            if (!user_cstr_ok(path, 1024u) ||
+                (out && (mul_overflow_size(max_entries, sizeof(*out), &out_bytes) || !user_ptr_range_ok(out, out_bytes))) ||
+                (out_count_ptr && !user_ptr_range_ok(out_count_ptr, sizeof(*out_count_ptr)))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            int rc = 0;
+            if (!out || max_entries == 0) {
+                rc = fs_list_dir(path, NULL, 0, &out_count);
+            } else {
+                size_t cap = max_entries;
+                if (cap > 64u) cap = 64u;
+                fs_dirent_t* tmp = (fs_dirent_t*)kmalloc(sizeof(fs_dirent_t) * cap);
+                if (!tmp) {
+                    regs->rax = (uint64_t)-1;
+                    return 0;
+                }
+                rc = fs_list_dir(path, tmp, cap, &out_count);
+                size_t copy_n = out_count;
+                if (copy_n > cap) copy_n = cap;
+                if (rc == 0) {
+                    for (size_t i = 0; i < copy_n; ++i) {
+                        memcpy(out[i].name, tmp[i].name, sizeof(out[i].name));
+                        out[i].is_dir = tmp[i].is_dir ? 1u : 0u;
+                        out[i]._pad[0] = 0;
+                        out[i]._pad[1] = 0;
+                        out[i]._pad[2] = 0;
+                        out[i]._pad[3] = 0;
+                        out[i]._pad[4] = 0;
+                        out[i]._pad[5] = 0;
+                        out[i]._pad[6] = 0;
+                        out[i].size = (uint64_t)tmp[i].size;
+                    }
+                }
+                kfree(tmp);
+            }
+            if (out_count_ptr) *out_count_ptr = (uint64_t)out_count;
+            regs->rax = (uint64_t)rc;
+            return 0;
+        }
+        case INT80_FS_REMOVE: {
+            const char* path = (const char*)(uintptr_t)regs->rdi;
+            if (!user_cstr_ok(path, 1024u)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fs_remove(path);
+            return 0;
+        }
+        case INT80_FS_RENAME: {
+            const char* old_path = (const char*)(uintptr_t)regs->rdi;
+            const char* new_path = (const char*)(uintptr_t)regs->rsi;
+            if (!user_cstr_ok(old_path, 1024u) || !user_cstr_ok(new_path, 1024u)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fs_rename(old_path, new_path);
+            return 0;
+        }
+        case INT80_FS_COPY_FAST: {
+            const char* src = (const char*)(uintptr_t)regs->rdi;
+            const char* dst = (const char*)(uintptr_t)regs->rsi;
+            if (!user_cstr_ok(src, 1024u) || !user_cstr_ok(dst, 1024u)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fs_copy_file_fast(src, dst);
+            return 0;
+        }
+        case INT80_FS_RESCAN: {
+            fs_rescan_storage();
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_MOUSE_GET_STATE: {
+            int80_mouse_state_t* out = (int80_mouse_state_t*)(uintptr_t)regs->rdi;
+            if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            input_mouse_state_t m;
+            int bound_w = 0;
+            int bound_h = 0;
+            if (framebuffer_request.response && framebuffer_request.response->framebuffer_count > 0) {
+                volatile struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
+                if (fb) {
+                    bound_w = (int)fb->width;
+                    bound_h = (int)fb->height;
+                }
+            }
+            input_mouse_get_state(&m, bound_w, bound_h);
+            out->x = m.x;
+            out->y = m.y;
+            out->scroll = m.scroll;
+            out->left = m.left;
+            out->right = m.right;
+            out->middle = m.middle;
+            out->_pad = 0;
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_KBD_IS_PRESSED: {
+            uint8_t key = (uint8_t)(regs->rdi & 0x7Fu);
+            regs->rax = input_key_pressed(key) ? 1u : 0u;
+            return 0;
+        }
+        case INT80_KBD_GET_STATE: {
+            uint8_t* out = (uint8_t*)(uintptr_t)regs->rdi;
+            uint64_t len = regs->rsi;
+            if (!out || len == 0 || len > 128u || !user_ptr_range_ok(out, (size_t)len)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            input_copy_key_state(out, (size_t)len);
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_KBD_CONSUME_SUPER_PRESS: {
+            regs->rax = input_consume_super_press() ? 1u : 0u;
+            return 0;
+        }
+        case INT80_FB_GET_INFO: {
+            int80_fb_info_t* out = (int80_fb_info_t*)(uintptr_t)regs->rdi;
+            if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            const gpu_device_t* gpu = gpu_get_primary();
+            if (gpu) {
+                out->width = gpu->info.width;
+                out->height = gpu->info.height;
+                out->pitch = gpu->info.pitch;
+                out->bpp = gpu->info.bpp;
+            } else {
+                out->width = 0;
+                out->height = 0;
+                out->pitch = 0;
+                out->bpp = 0;
+            }
+            if (framebuffer_request.response && framebuffer_request.response->framebuffer_count > 0) {
+                volatile struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
+                out->memory_model = fb->memory_model;
+                out->red_mask_size = fb->red_mask_size;
+                out->red_mask_shift = fb->red_mask_shift;
+                out->green_mask_size = fb->green_mask_size;
+                out->green_mask_shift = fb->green_mask_shift;
+                out->blue_mask_size = fb->blue_mask_size;
+                out->blue_mask_shift = fb->blue_mask_shift;
+            } else {
+                out->memory_model = 0;
+                out->red_mask_size = 0;
+                out->red_mask_shift = 0;
+                out->green_mask_size = 0;
+                out->green_mask_shift = 0;
+                out->blue_mask_size = 0;
+                out->blue_mask_shift = 0;
+            }
+            out->_pad = 0;
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_FB_BLIT32: {
+            static int g_disable_gpu_blit = 1;
+            const uint32_t* src = (const uint32_t*)(uintptr_t)regs->rdi;
+            uint32_t src_w = (uint32_t)regs->rsi;
+            uint32_t src_h = (uint32_t)regs->rdx;
+            uint32_t src_pitch = (uint32_t)regs->rcx;
+            if (!src || src_w == 0 || src_h == 0 || src_pitch == 0) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (src_w > (UINT32_MAX / sizeof(uint32_t))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (src_pitch < src_w * sizeof(uint32_t)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if ((uint64_t)src_pitch > 0 && src_h > 0) {
+                size_t src_bytes = 0;
+                if (mul_overflow_size((size_t)src_pitch, (size_t)src_h, &src_bytes) || !user_ptr_range_ok(src, src_bytes)) {
+                    regs->rax = (uint64_t)-1;
+                    return 0;
+                }
+            }
+            const gpu_device_t* gpu = gpu_get_primary();
+            if (!g_disable_gpu_blit && gpu && gpu->ops && gpu->ops->ioctl) {
+                ntux_gpu_blit32_t req = {
+                    .src = src,
+                    .width = src_w,
+                    .height = src_h,
+                    .pitch = src_pitch
+                };
+                int rc = gpu->ops->ioctl((struct gpu_device*)gpu, NTUX_GPU_IOCTL_BLIT32, &req);
+                if (rc == 0) {
+                    g_gpu_blit_count++;
+                    regs->rax = 0;
+                    return 0;
+                }
+                // GPU path failed - fall back to boot framebuffer.
+            }
+
+            if (!framebuffer_request.response || framebuffer_request.response->framebuffer_count < 1) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            volatile struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
+            if (fb->bpp != 32 && fb->bpp != 24) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (fb->memory_model != LIMINE_FRAMEBUFFER_RGB) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (fb->red_mask_size == 0 || fb->green_mask_size == 0 || fb->blue_mask_size == 0) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if ((uint32_t)fb->red_mask_shift + (uint32_t)fb->red_mask_size > (uint32_t)fb->bpp ||
+                (uint32_t)fb->green_mask_shift + (uint32_t)fb->green_mask_size > (uint32_t)fb->bpp ||
+                (uint32_t)fb->blue_mask_shift + (uint32_t)fb->blue_mask_size > (uint32_t)fb->bpp) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+
+            uint32_t copy_w = src_w;
+            uint32_t copy_h = src_h;
+            if (copy_w > (uint32_t)fb->width) copy_w = (uint32_t)fb->width;
+            if (copy_h > (uint32_t)fb->height) copy_h = (uint32_t)fb->height;
+
+            uint8_t* dst = (uint8_t*)(uintptr_t)fb->address;
+            for (uint32_t y = 0; y < copy_h; ++y) {
+                const uint8_t* src_row = (const uint8_t*)(const void*)src + (size_t)y * (size_t)src_pitch;
+                uint8_t* dst_row = dst + (size_t)y * (size_t)fb->pitch;
+                const uint32_t* s = (const uint32_t*)(const void*)src_row;
+                for (uint32_t x = 0; x < copy_w; ++x) {
+                    uint32_t p = s[x];
+                    uint8_t b = (uint8_t)(p & 0xFFu);
+                    uint8_t g = (uint8_t)((p >> 8) & 0xFFu);
+                    uint8_t r = (uint8_t)((p >> 16) & 0xFFu);
+                    uint32_t out = pack_rgb_for_fb(r, g, b, fb);
+                    if (fb->bpp == 32) {
+                        dst_row[x * 4u + 0u] = (uint8_t)(out & 0xFFu);
+                        dst_row[x * 4u + 1u] = (uint8_t)((out >> 8) & 0xFFu);
+                        dst_row[x * 4u + 2u] = (uint8_t)((out >> 16) & 0xFFu);
+                        dst_row[x * 4u + 3u] = (uint8_t)((out >> 24) & 0xFFu);
+                    } else {
+                        dst_row[x * 3u + 0u] = (uint8_t)(out & 0xFFu);
+                        dst_row[x * 3u + 1u] = (uint8_t)((out >> 8) & 0xFFu);
+                        dst_row[x * 3u + 2u] = (uint8_t)((out >> 16) & 0xFFu);
+                    }
+                }
+            }
+            g_gpu_blit_count++;
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_SET_TEXT_COLOR: {
+            g_printer.color = (uint32_t)regs->rdi;
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GET_TIME: {
+            int80_time_t* out = (int80_time_t*)(uintptr_t)regs->rdi;
+            if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            cmos_time_t t;
+            if (!cmos_read_time(&t)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            out->second = t.second;
+            out->minute = t.minute;
+            out->hour = t.hour;
+            out->day = t.day;
+            out->month = t.month;
+            out->year = t.year;
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GET_TIMER_HZ: {
+            regs->rax = (uint64_t)timer_get_hz();
+            return 0;
+        }
+        case INT80_BLK_LIST: {
+            int80_block_device_info_t* out = (int80_block_device_info_t*)(uintptr_t)regs->rdi;
+            size_t max_entries = (size_t)regs->rsi;
+            uint64_t* out_count_ptr = (uint64_t*)(uintptr_t)regs->rdx;
+            size_t out_bytes = 0;
+            if (max_entries > 16u) max_entries = 16u;
+            if (out && (mul_overflow_size(max_entries, sizeof(*out), &out_bytes) || !user_ptr_range_ok(out, out_bytes))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (out_count_ptr && !user_ptr_range_ok(out_count_ptr, sizeof(*out_count_ptr))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            size_t count = fs_get_block_devices((fs_block_device_info_t*)out, out ? max_entries : 0u);
+            if (out_count_ptr) *out_count_ptr = (uint64_t)count;
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_BLK_PART_LIST: {
+            uint8_t drive = (uint8_t)regs->rdi;
+            int80_partition_info_t* out = (int80_partition_info_t*)(uintptr_t)regs->rsi;
+            size_t max_entries = (size_t)regs->rdx;
+            uint64_t* out_count_ptr = (uint64_t*)(uintptr_t)regs->rcx;
+            size_t out_bytes = 0;
+            if (max_entries > 16u) max_entries = 16u;
+            if (out && (mul_overflow_size(max_entries, sizeof(*out), &out_bytes) || !user_ptr_range_ok(out, out_bytes))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (out_count_ptr && !user_ptr_range_ok(out_count_ptr, sizeof(*out_count_ptr))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            size_t count = fs_list_partitions(drive, (fs_partition_info_t*)out, out ? max_entries : 0u);
+            if (out_count_ptr) *out_count_ptr = (uint64_t)count;
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_BLK_READ: {
+            uint8_t drive = (uint8_t)regs->rdi;
+            uint64_t lba = regs->rsi;
+            uint32_t sectors = (uint32_t)regs->rdx;
+            void* out = (void*)(uintptr_t)regs->rcx;
+            size_t bytes = 0;
+            if (mul_overflow_size((size_t)sectors, 512u, &bytes) || !user_ptr_range_ok(out, bytes)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fs_block_read(drive, lba, sectors, out);
+            return 0;
+        }
+        case INT80_BLK_WRITE: {
+            uint8_t drive = (uint8_t)regs->rdi;
+            uint64_t lba = regs->rsi;
+            uint32_t sectors = (uint32_t)regs->rdx;
+            const void* in = (const void*)(uintptr_t)regs->rcx;
+            size_t bytes = 0;
+            if (mul_overflow_size((size_t)sectors, 512u, &bytes) || !user_ptr_range_ok(in, bytes)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fs_block_write(drive, lba, sectors, in);
+            return 0;
+        }
+        case INT80_BLK_SET_MBR_PART: {
+            const int80_mbr_part_req_t* req = (const int80_mbr_part_req_t*)(uintptr_t)regs->rdi;
+            if (!req || !user_ptr_range_ok(req, sizeof(*req))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fs_set_mbr_partition(
+                req->drive,
+                req->part_index,
+                req->lba_start,
+                req->sectors,
+                req->type,
+                req->bootable
+            );
+            return 0;
+        }
+        case INT80_MKFS_EXT2: {
+            regs->rax = (uint64_t)fs_mkfs_ext2((uint8_t)regs->rdi, (uint32_t)regs->rsi, (uint32_t)regs->rdx);
+            return 0;
+        }
+        case INT80_MKFS_EXT4: {
+            regs->rax = (uint64_t)fs_mkfs_ext4((uint8_t)regs->rdi, (uint32_t)regs->rsi, (uint32_t)regs->rdx);
+            return 0;
+        }
+        case INT80_MKFS_FAT: {
+            regs->rax = (uint64_t)fs_mkfs_fat((uint8_t)regs->rdi, (uint32_t)regs->rsi, (uint32_t)regs->rdx, (uint8_t)regs->rcx);
+            return 0;
+        }
+        case INT80_OPEN: {
+            const char* path = (const char*)(uintptr_t)regs->rdi;
+            int flags = (int)regs->rsi;
+            if (!user_cstr_ok(path, 1024u)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fd_open(path, flags);
+            return 0;
+        }
+        case INT80_READ: {
+            int fd = (int)regs->rdi;
+            void* out = (void*)(uintptr_t)regs->rsi;
+            size_t len = (size_t)regs->rdx;
+            if (len > 0 && !user_ptr_range_ok(out, len)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fd_read(fd, out, len);
+            return 0;
+        }
+        case INT80_WRITE_FD: {
+            int fd = (int)regs->rdi;
+            const void* in = (const void*)(uintptr_t)regs->rsi;
+            size_t len = (size_t)regs->rdx;
+            if (len > 0 && !user_ptr_range_ok(in, len)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fd_write(fd, in, len);
+            return 0;
+        }
+        case INT80_CLOSE: {
+            int fd = (int)regs->rdi;
+            regs->rax = (uint64_t)fd_close(fd);
+            return 0;
+        }
+        case INT80_IOCTL: {
+            int fd = (int)regs->rdi;
+            uint64_t req = regs->rsi;
+            void* arg = (void*)(uintptr_t)regs->rdx;
+            if (arg && !user_ptr_range_ok(arg, 256u)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)fd_ioctl(fd, req, arg);
+            return 0;
+        }
+        case INT80_LSEEK: {
+            int fd = (int)regs->rdi;
+            long offset = (long)regs->rsi;
+            int whence = (int)regs->rdx;
+            regs->rax = (uint64_t)fd_lseek(fd, offset, whence);
+            return 0;
+        }
+        case INT80_NET_PING: {
+            const char* host = (const char*)(uintptr_t)regs->rdi;
+            char* out = (char*)(uintptr_t)regs->rsi;
+            uint64_t cap = regs->rdx;
+            if (!user_cstr_ok(host, 256u) || !out || cap == 0 || cap > 2048u || !user_ptr_range_ok(out, (size_t)cap)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)net_ping(host, out, (int)cap);
+            return 0;
+        }
+        case INT80_NET_HTTP_GET: {
+            const char* url = (const char*)(uintptr_t)regs->rdi;
+            char* out = (char*)(uintptr_t)regs->rsi;
+            uint64_t cap = regs->rdx;
+            if (!user_cstr_ok(url, 256u) || !out || cap == 0 || cap > 8192u || !user_ptr_range_ok(out, (size_t)cap)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)net_http_get(url, out, (int)cap);
+            return 0;
+        }
+        case INT80_NET_DEBUG: {
+            char* out = (char*)(uintptr_t)regs->rdi;
+            uint64_t cap = regs->rsi;
+            if (!out || cap == 0 || cap > 2048u || !user_ptr_range_ok(out, (size_t)cap)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)net_debug_dump(out, (int)cap);
+            return 0;
+        }
+        case INT80_NET_SET_DNS: {
+            uint32_t ip = (uint32_t)regs->rdi;
+            regs->rax = (uint64_t)net_set_dns_server(ip);
+            return 0;
+        }
+        case INT80_DESKAPI_PUSH: {
+            const char* buf = (const char*)(uintptr_t)regs->rdi;
+            uint64_t len = regs->rsi;
+            if (!buf || len == 0 || len > DESKAPI_MAX_MSG || !user_ptr_range_ok(buf, (size_t)len)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)deskapi_push(buf, len);
+            return 0;
+        }
+        case INT80_DESKAPI_POP: {
+            char* out = (char*)(uintptr_t)regs->rdi;
+            uint64_t cap = regs->rsi;
+            uint64_t* out_len_ptr = (uint64_t*)(uintptr_t)regs->rdx;
+            if (!out || cap == 0 || cap > (DESKAPI_MAX_MSG + 1u) || !user_ptr_range_ok(out, (size_t)cap)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (out_len_ptr && !user_ptr_range_ok(out_len_ptr, sizeof(uint64_t))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)deskapi_pop(out, cap, out_len_ptr);
+            return 0;
+        }
+        case INT80_GET_MEM_INFO: {
+            int80_mem_info_t* out = (int80_mem_info_t*)(uintptr_t)regs->rdi;
+            if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            out->total_bytes = (uint64_t)pmm_get_total_usable_memory();
+            out->free_bytes = (uint64_t)pmm_get_free_memory();
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GET_DISK_STATS: {
+            int80_disk_stats_t* out = (int80_disk_stats_t*)(uintptr_t)regs->rdi;
+            if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            fs_get_io_stats(&out->read_bytes, &out->write_bytes);
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GET_CPU_INFO: {
+            int80_cpu_info_t* out = (int80_cpu_info_t*)(uintptr_t)regs->rdi;
+            if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            out->ticks = get_tick_count();
+            out->idle_ticks = get_idle_tick_count();
+            out->hz = timer_get_hz();
+            out->_pad = 0;
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GET_CPU_BRAND: {
+            char* out = (char*)(uintptr_t)regs->rdi;
+            uint64_t cap = regs->rsi;
+            if (!out || cap == 0 || cap > 128u || !user_ptr_range_ok(out, (size_t)cap)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            info_get_cpu_brand(out, (size_t)cap);
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_DIALOG_POP: {
+            char* out = (char*)(uintptr_t)regs->rdi;
+            uint64_t cap = regs->rsi;
+            uint32_t* out_code = (uint32_t*)(uintptr_t)regs->rdx;
+            int tid = int80_current_tid();
+            if (tid < 0 || tid >= MAX_THREADS) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (!out || cap == 0 || cap > (uint64_t)DIALOG_MAX_TEXT || !user_ptr_range_ok(out, (size_t)cap)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (out_code && !user_ptr_range_ok(out_code, sizeof(uint32_t))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)deskapi_dialog_pop(tid, out, cap, out_code);
+            return 0;
+        }
+        case INT80_DIALOG_PUSH: {
+            int tid = (int)regs->rdi;
+            uint32_t code = (uint32_t)regs->rsi;
+            const char* text = (const char*)(uintptr_t)regs->rdx;
+            if (tid < 0 || tid >= MAX_THREADS) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (!text || !user_cstr_ok(text, DIALOG_MAX_TEXT)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)deskapi_dialog_push(tid, code, text);
+            return 0;
+        }
+        default:
+            regs->rax = (uint64_t)-1;
+            return 0;
+    }
+}
+
+void syscall_user_thread_exit(int80_regs_t *regs) {
+    (void)regs;
+    console_input_release_if_current();
+    thread_exit_current();
+}
+
+
+
+

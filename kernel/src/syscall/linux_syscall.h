@@ -1,0 +1,14 @@
+#ifndef LINUX_SYSCALL_H
+#define LINUX_SYSCALL_H
+
+#include <stdint.h>
+
+uint64_t linux_syscall_dispatch(uint64_t num,
+                                uint64_t a0,
+                                uint64_t a1,
+                                uint64_t a2,
+                                uint64_t a3,
+                                uint64_t a4,
+                                uint64_t a5);
+
+#endif
