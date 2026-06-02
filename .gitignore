@@ -12,4 +12,6 @@ kernel/obj-x86_64/
 *.tmp
 *.swp
 build/
-out/
+out/*.img
+disk.img
+drive_ext4.img
