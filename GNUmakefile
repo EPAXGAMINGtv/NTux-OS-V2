@@ -6,26 +6,25 @@ ARCH := x86_64
 
 # Default user QEMU flags. These are appended to the QEMU command calls.
 # Note: For ATA/IDE to work, we need to use the legacy IDE controller syntax
-QEMUFLAGS := -m 4G \
-             -M pc \
-			 -smp 4 \
-             -serial stdio \
-             -serial file:qemu_debug.txt \
-             -d int,guest_errors,cpu_reset,mmu \
-             -D qemu_full.log \
-             -boot d \
-             -device qemu-xhci \
-             -device sdhci-pci \
-             -drive if=none,id=sdcard,file=disk.img,format=raw \
-             -device sd-card,drive=sdcard \
-             -device ich9-intel-hda \
-             -device hda-duplex \
-             -netdev user,id=net0 \
-             -device virtio-net-pci,netdev=net0 \
-             -drive file=drive_fat32.img,format=raw,if=ide,index=0,media=disk \
-			 -drive file=drive_ext2.img,format=raw,if=ide,index=1,media=disk 
-
-
+QEMUFLAGS := \
+    -enable-kvm \
+    -cpu host \
+    -machine q35,accel=kvm \
+    -m 8G \
+    -smp 8,sockets=1,cores=8,threads=1 \
+    -serial stdio \
+    -boot d \
+    -device qemu-xhci \
+    -device sdhci-pci \
+    -device virtio-rng-pci \
+    -netdev user,id=net0 \
+    -device virtio-net-pci,netdev=net0 \
+    -device ich9-intel-hda \
+    -device hda-duplex \
+    -drive if=none,id=sdcard,file=disk.img,format=raw,cache=none,aio=native \
+    -device sd-card,drive=sdcard \
+    -drive file=drive_fat32.img,format=raw,if=virtio,cache=none,aio=native \
+    -drive file=drive_ext2.img,format=raw,if=virtio,cache=none,aio=native
 override IMAGE_NAME := NTux-OS-$(ARCH)
 # Optional: absolute or relative path to your IWAD (e.g. /path/to/doom1.wad).
 # If set, `make create-drives` copies it to drive_fat32.img as /doom1.wad.

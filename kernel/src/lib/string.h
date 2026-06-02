@@ -15,6 +15,16 @@ typedef enum {
 bool memcmp(const void *s1, const void *s2, uint64_t len);
 void memset(void *addr, uint8_t val, uint64_t len);
 void* memcpy(void *dest, const void *src, uint64_t len);
+static inline void* memmove(void *dest, const void *src, uint64_t len) {
+    uint8_t *d = (uint8_t*)dest;
+    const uint8_t *s = (const uint8_t*)src;
+    if (d < s) {
+        for (uint64_t i = 0; i < len; i++) d[i] = s[i];
+    } else {
+        for (uint64_t i = len; i > 0; i--) d[i-1] = s[i-1];
+    }
+    return dest;
+}
 
 char *strcpy(char *__restrict dest, const char *src);
 char *strncpy(char *__restrict dest, const char *src, uint64_t len);

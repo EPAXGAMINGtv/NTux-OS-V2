@@ -19,7 +19,7 @@
 #include <drivers/audio/audio.h>
 #include <drivers/cmos/cmos.h>
 #include <interrupt/apic/apic.h>
-#include <net/net.h>
+#include <network.h>
 #include <drivers/sata/ata.h>
 #include <drivers/nvme/nvme.h>
 #include <drivers/sdmmc/sdmmc.h>
@@ -139,7 +139,7 @@ static void init_cpu(void) {
 static void init_storage_and_fs(void) {
     ata_init();
     nvme_init();
-    sdmmc_init();
+    //sdmmc_init();
     fs_init();
     gpu_init();
 
@@ -162,13 +162,10 @@ static void init_drivers(void) {
     beep(440, 4);
     kprint_ok("Audio initialized");
 
-    net_init();
-    if (g_net_state.virtio_net_present) {
-        kprint_ok("VirtIO-Net detected");
-    } else if (g_net_state.e1000_present) {
-        kprint_ok("E1000 detected");
+    if (network_init() == 0) {
+        kprint_ok("NIC initialized");
     } else {
-        kprint_error("Network device not detected");
+        kprint_error("No supported NIC detected");
     }
 
 }

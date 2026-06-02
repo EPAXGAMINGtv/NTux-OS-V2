@@ -85,6 +85,12 @@ override CPPFLAGS := \
     -I limine-protocol/include \
     -isystem freestnd-c-hdrs/include \
     -iquote ../libc \
+    -isystem src/net-new \
+    -isystem src/net-new/nic \
+    -isystem src/net-new/third_party/lwip \
+    -isystem src/drivers/pci \
+    -isystem src/arch/x86_64 \
+    -isystem src/lib \
     $(CPPFLAGS) \
     -MMD -MP
 
@@ -116,7 +122,7 @@ override LDFLAGS += \
 # ------------------------------------------------------------------
 # Sources & Objects
 # ------------------------------------------------------------------
-KERNEL_SRC := $(shell find -L src cc-runtime/src -type f ! -path 'src/arch/*' 2>/dev/null | LC_ALL=C sort)
+KERNEL_SRC := $(shell find -L src cc-runtime/src -type f ! -path 'src/arch/*' ! -path 'src/net-new/third_party/lwip/system/OS/*' 2>/dev/null | LC_ALL=C sort)
 KERNEL_SRC += $(shell find -L src/arch/$(ARCH) -type f 2>/dev/null | LC_ALL=C sort)
 
 LIBC_SRC   := $(shell find ../libc -name '*.c' 2>/dev/null | LC_ALL=C sort)
