@@ -23,5 +23,6 @@ extern net_state_t g_net_state;
 
 void net_init(void);
 int net_ping(const char* target, char* out, int out_cap);
+int net_http_get(const char* url, char* out, int out_cap);
 
 #endif

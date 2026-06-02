@@ -190,7 +190,6 @@ void kmain(void) {
     if (!apic_init()) {
         kprint("[APIC] Fallback to PIC IRQ routing\n");
     }
-    core_init();
 
     const char* app_status = NULL;
     if (module_loader_start_module_ring3("login", &app_status)) {

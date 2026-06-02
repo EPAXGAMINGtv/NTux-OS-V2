@@ -23,5 +23,6 @@ double pow(double x, double y);
 double fmod(double x, double y);
 double frexp(double x, int *exp);
 double ldexp(double x, int exp);
+long double ldexpl(long double x, int exp);
 
 #endif
