@@ -122,16 +122,27 @@ int rtl8139_send_packet(const void* data, size_t length) {
     if (!rtl8139_initialized) return -1;
     if (length > 1792) return -1;
 
+    extern void serial_write(const char *str);
+    char buf[64];
+    serial_write("[RTL8139] TX len="); itoa(length, buf, 10); serial_write(buf); serial_write("\n");
+
     // Use current tx buffer
     uint8_t* tx_buf = tx_buffers[tx_curr];
     uint8_t* src = (uint8_t*)data;
     for (size_t i = 0; i < length; i++) tx_buf[i] = src[i];
 
     uint32_t phys = v2p((uint64_t)(uintptr_t)tx_buf);
+    serial_write("[RTL8139] TX phys="); itoa_hex(phys, buf); serial_write(buf);
+    serial_write(" virt="); itoa_hex((uint64_t)(uintptr_t)tx_buf, buf); serial_write(buf); serial_write("\n");
+
     rtl8139_outl(RTL8139_TSAD0 + (tx_curr * 4), phys);
     
-    // Status is length | clear bit 13 to send
-    rtl8139_outl(RTL8139_TSD0 + (tx_curr * 4), length);
+    // Set OWN bit (bit 13) to start transmission
+    rtl8139_outl(RTL8139_TSD0 + (tx_curr * 4), length | (1 << 13));
+
+    // Check TSD after write
+    uint32_t tsd = rtl8139_inl(RTL8139_TSD0 + (tx_curr * 4));
+    serial_write("[RTL8139] TX TSD after="); itoa_hex(tsd, buf); serial_write(buf); serial_write("\n");
 
     tx_curr = (tx_curr + 1) % 4;
     return 0;
@@ -140,8 +151,13 @@ int rtl8139_send_packet(const void* data, size_t length) {
 int rtl8139_receive_packet(void* buffer, size_t buffer_size) {
     if (!rtl8139_initialized) return 0;
 
-    // Compare our read pointer with NIC's write pointer (CBR)
+    extern void serial_write(const char *str);
+    char buf[64];
+
     uint16_t cbr = rtl8139_inw(RTL8139_CBR);
+    serial_write("[RTL8139] RX rx_ptr="); itoa_hex(rx_ptr, buf); serial_write(buf);
+    serial_write(" cbr="); itoa_hex(cbr, buf); serial_write(buf); serial_write("\n");
+
     if (rx_ptr == cbr) {
         return 0; // No new packets
     }
@@ -150,8 +166,11 @@ int rtl8139_receive_packet(void* buffer, size_t buffer_size) {
     uint16_t rx_status = rx_head[0];
     uint16_t rx_length = rx_head[1]; // includes 4 bytes CRC at end
 
+    serial_write("[RTL8139] RX status="); itoa_hex(rx_status, buf); serial_write(buf);
+    serial_write(" length="); itoa(rx_length, buf, 10); serial_write(buf); serial_write("\n");
+
     if (rx_status & (1 << 5)) {
-        // Bad packet - skip 4-byte header
+        serial_write("[RTL8139] RX bad packet\n");
         rx_ptr = (rx_ptr + 4 + 3) & ~3;
         if (rx_ptr >= RX_BUF_SIZE) rx_ptr = 0;
         rtl8139_outw(RTL8139_CAPR, rx_ptr - 16);
@@ -159,10 +178,12 @@ int rtl8139_receive_packet(void* buffer, size_t buffer_size) {
     }
 
     if (rx_length == 0) {
+        serial_write("[RTL8139] RX zero length\n");
         return 0;
     }
 
     if (rx_length > buffer_size + 4) {
+        serial_write("[RTL8139] RX too large\n");
         rx_ptr = (rx_ptr + rx_length + 4 + 3) & ~3;
         if (rx_ptr >= RX_BUF_SIZE) rx_ptr = 0;
         rtl8139_outw(RTL8139_CAPR, rx_ptr - 16);
@@ -171,6 +192,8 @@ int rtl8139_receive_packet(void* buffer, size_t buffer_size) {
 
     uint8_t* pkt = (uint8_t*)(rx_head) + 4;
     uint16_t net_len = rx_length - 4; // Strip CRC
+
+    serial_write("[RTL8139] RX net_len="); itoa(net_len, buf, 10); serial_write(buf); serial_write("\n");
 
     uint8_t* dest = (uint8_t*)buffer;
     for (int i = 0; i < net_len; i++) {

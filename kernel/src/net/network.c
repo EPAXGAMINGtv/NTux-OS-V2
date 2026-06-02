@@ -435,7 +435,15 @@ int network_dns_lookup(const char *name, ipv4_address_t *out_ip) {
     } else if (err == ERR_INPROGRESS) {
         uint32_t start = sys_now();
         asm volatile("sti");
+        uint32_t last_print = start;
         while (sys_now() - start < 10000) {
+            uint32_t now = sys_now();
+            if (now - last_print >= 1000) {
+                extern void serial_write(const char *str);
+                serial_write("[DNS] waiting... sys_now=");
+                char buf[16]; itoa(now, buf, 10); serial_write(buf); serial_write("\n");
+                last_print = now;
+            }
             network_process_frames();
             flags = spinlock_acquire_irqsave(&network_lock);
             if (dns_done == 1) {

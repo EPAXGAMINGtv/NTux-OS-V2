@@ -12,6 +12,7 @@ kernel/obj-x86_64/
 *.tmp
 *.swp
 build/
-out/*.img
-disk.img
-drive_ext4.img
+out/
+*.img
+qemu_debug.txt
+qemu_full.log
