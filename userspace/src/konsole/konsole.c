@@ -865,24 +865,26 @@ static void cmd_ping(const char* host) {
     }
     char out[512];
     long rc = sys_net_ping(host, out, sizeof(out));
-    if (rc == 0) {
+    if (rc > 0) {
         puts(out);
         return;
     }
     sys_write("ping: failed rc=", 18);
-    print_u64((uint64_t)(rc < 0 ? -rc : rc));
+    if (rc < 0) rc = -rc;
+    print_u64((uint64_t)rc);
     putchar('\n');
 }
 
 static void cmd_netinfo(void) {
     char out[1024];
     long rc = sys_net_debug(out, sizeof(out));
-    if (rc == 0) {
+    if (rc > 0) {
         puts(out);
         return;
     }
     sys_write("netinfo: failed rc=", 20);
-    print_u64((uint64_t)(rc < 0 ? -rc : rc));
+    if (rc < 0) rc = -rc;
+    print_u64((uint64_t)rc);
     putchar('\n');
 }
 
@@ -913,12 +915,13 @@ static void cmd_http_get(const char* url) {
     }
     char out[4096];
     long rc = sys_net_http_get(url, out, sizeof(out));
-    if (rc == 0) {
+    if (rc > 0) {
         puts(out);
         return;
     }
     sys_write("httpget: failed rc=", 22);
-    print_u64((uint64_t)(rc < 0 ? -rc : rc));
+    if (rc < 0) rc = -rc;
+    print_u64((uint64_t)rc);
     putchar('\n');
 }
 

@@ -25,18 +25,20 @@
 #define RTL8139_RCR_AB        (1 << 3) // Accept Broadcast Packets
 #define RTL8139_RCR_WRAP      (1 << 7) // WRAP
 
-#define RTL8139_CR_TE         (1 << 2) // Transmitter Enable
-#define RTL8139_CR_RE         (1 << 3) // Receiver Enable
+#define RTL8139_CR_TE         (1 << 0) // Transmitter Enable
+#define RTL8139_CR_RE         (1 << 1) // Receiver Enable
 #define RTL8139_CR_RST        (1 << 4) // Reset
 
 static int rtl8139_initialized = 0;
 static uint64_t mmio_base_addr = 0;
 static uint8_t mac_addr[6];
 
+#define RX_BUF_SIZE 65536
+
 // Receive buffer must be 8K + 16 bytes + 1.5K
-// Let's use 32K buffer for safety, which is standard.
-static uint8_t rx_buffer[32768 + 16 + 1500] __attribute__((aligned(4096)));
-static uint16_t rx_ptr = 0; // Current read position
+// Let's use 64K buffer for safety, which is standard.
+static uint8_t rx_buffer[RX_BUF_SIZE + 16 + 1500] __attribute__((aligned(4096)));
+static uint32_t rx_ptr = 0; // Current read position
 
 // Transmit buffers (4 descriptors in RTL8139)
 static uint8_t tx_buffers[4][4096] __attribute__((aligned(4096)));
@@ -138,43 +140,49 @@ int rtl8139_send_packet(const void* data, size_t length) {
 int rtl8139_receive_packet(void* buffer, size_t buffer_size) {
     if (!rtl8139_initialized) return 0;
 
-    uint8_t cmd = rtl8139_inb(RTL8139_CR);
-    if ((cmd & 1) == 1) { // Buffer empty
-        return 0; 
+    // Compare our read pointer with NIC's write pointer (CBR)
+    uint16_t cbr = rtl8139_inw(RTL8139_CBR);
+    if (rx_ptr == cbr) {
+        return 0; // No new packets
     }
 
     uint16_t* rx_head = (uint16_t*)(rx_buffer + rx_ptr);
     uint16_t rx_status = rx_head[0];
     uint16_t rx_length = rx_head[1]; // includes 4 bytes CRC at end
 
-    if (rx_status & (1 << 5)) { // Bad packet
-        // Bad packet received. We need to skip it or reset.
-    }
-
-    if (rx_length > 0 && rx_length <= buffer_size + 4) {
-        uint8_t* pkt = (uint8_t*)(rx_head) + 4;
-        uint16_t net_len = rx_length - 4; // Strip CRC
-        
-        uint8_t* dest = (uint8_t*)buffer;
-        for (int i = 0; i < net_len; i++) {
-            dest[i] = pkt[i];
-        }
-
-        // Update rx_ptr
-        rx_ptr = (rx_ptr + rx_length + 4 + 3) & ~3; // Align up to 4 bytes
-        if (rx_ptr > 32768) {
-            rx_ptr -= 32768; // Wrap around
-        }
-
+    if (rx_status & (1 << 5)) {
+        // Bad packet - skip 4-byte header
+        rx_ptr = (rx_ptr + 4 + 3) & ~3;
+        if (rx_ptr >= RX_BUF_SIZE) rx_ptr = 0;
         rtl8139_outw(RTL8139_CAPR, rx_ptr - 16);
-        return net_len;
+        return 0;
     }
 
-    // Default error handling, skip it
+    if (rx_length == 0) {
+        return 0;
+    }
+
+    if (rx_length > buffer_size + 4) {
+        rx_ptr = (rx_ptr + rx_length + 4 + 3) & ~3;
+        if (rx_ptr >= RX_BUF_SIZE) rx_ptr = 0;
+        rtl8139_outw(RTL8139_CAPR, rx_ptr - 16);
+        return -1;
+    }
+
+    uint8_t* pkt = (uint8_t*)(rx_head) + 4;
+    uint16_t net_len = rx_length - 4; // Strip CRC
+
+    uint8_t* dest = (uint8_t*)buffer;
+    for (int i = 0; i < net_len; i++) {
+        dest[i] = pkt[i];
+    }
+
+    // Update rx_ptr and notify NIC
     rx_ptr = (rx_ptr + rx_length + 4 + 3) & ~3;
-    if (rx_ptr > 32768) rx_ptr -= 32768;
+    if (rx_ptr >= RX_BUF_SIZE) rx_ptr = 0;
     rtl8139_outw(RTL8139_CAPR, rx_ptr - 16);
-    return 0;
+
+    return net_len;
 }
 
 int rtl8139_get_mac(uint8_t* mac_out) {

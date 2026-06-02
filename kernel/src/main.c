@@ -164,6 +164,13 @@ static void init_drivers(void) {
 
     if (network_init() == 0) {
         kprint_ok("NIC initialized");
+        kprint("[NET] Testing connectivity...\n");
+        ipv4_address_t test_ip;
+        if (network_dns_lookup("github.com", &test_ip) == 0) {
+            kprint_ok("Network: github.com reachable");
+        } else {
+            kprint_error("Network not working properly");
+        }
     } else {
         kprint_error("No supported NIC detected");
     }
