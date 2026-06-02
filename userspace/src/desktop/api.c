@@ -1,6 +1,7 @@
 #include "api.h"
 
 #include <string.h>
+#include <stdlib.h>
 #include <syscall.h>
 
 #include <window_protocol.h>

@@ -16,6 +16,8 @@ void free(void *ptr);
 int atoi(const char *s);
 long atol(const char *s);
 long strtol(const char *s, char **endptr, int base);
+unsigned long strtoul(const char *s, char **endptr, int base);
+unsigned long long strtoull(const char *s, char **endptr, int base);
 double atof(const char *s);
 double strtod(const char *s, char **endptr);
 int abs(int v);
@@ -28,6 +30,8 @@ int system(const char *cmd);
 void abort(void);
 void exit(int code);
 int putenv(const char *string);
+void qsort(void *base, size_t nmemb, size_t size,
+           int (*compar)(const void *, const void *));
 
 #ifdef __cplusplus
 }
