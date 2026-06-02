@@ -97,8 +97,13 @@ int rtl8139_init(pci_device_t* pci_dev) {
     }
     serial_write("\n");
 
+    extern void serial_write(const char *str);
+    char dbg[64];
+
     // Init RX buffer
     uint32_t rx_phys = v2p((uint64_t)(uintptr_t)rx_buffer);
+    serial_write("[RTL8139] RX buf virt="); itoa_hex((uint64_t)(uintptr_t)rx_buffer, dbg); serial_write(dbg);
+    serial_write(" phys="); itoa_hex(rx_phys, dbg); serial_write(dbg); serial_write("\n");
     rtl8139_outl(RTL8139_RBSTART, rx_phys);
 
     // Set IMR / ISR
@@ -106,13 +111,26 @@ int rtl8139_init(pci_device_t* pci_dev) {
 
     // Set RCR (Receive Configuration Register)
     // Accept Broadcast/Multicast/Physical Match + WRAP
-    rtl8139_outl(RTL8139_RCR, RTL8139_RCR_AB | RTL8139_RCR_AM | RTL8139_RCR_APM | RTL8139_RCR_WRAP | (3 << 11)); // 32k rx buffer
+    rtl8139_outl(RTL8139_RCR, RTL8139_RCR_AB | RTL8139_RCR_AM | RTL8139_RCR_APM | RTL8139_RCR_WRAP | (3 << 11)); // 64k rx buffer
 
     // Enable Transmitter and Receiver
+    serial_write("[RTL8139] CR before="); itoa_hex(rtl8139_inb(RTL8139_CR), dbg); serial_write(dbg); serial_write("\n");
+    rtl8139_outb(RTL8139_CR, RTL8139_CR_TE);
+    serial_write("[RTL8139] CR after TE="); itoa_hex(rtl8139_inb(RTL8139_CR), dbg); serial_write(dbg); serial_write("\n");
+    rtl8139_outb(RTL8139_CR, RTL8139_CR_RE);
+    serial_write("[RTL8139] CR after RE="); itoa_hex(rtl8139_inb(RTL8139_CR), dbg); serial_write(dbg); serial_write("\n");
     rtl8139_outb(RTL8139_CR, RTL8139_CR_RE | RTL8139_CR_TE);
+    uint8_t cr_val = rtl8139_inb(RTL8139_CR);
+    serial_write("[RTL8139] CR final="); itoa_hex(cr_val, dbg); serial_write(dbg); serial_write("\n");
     
     // Config TCR
     rtl8139_outl(RTL8139_TCR, (0x03 << 24)); // IFG
+
+    // Read back RCR and CBR after init
+    uint32_t rcr_val = rtl8139_inl(RTL8139_RCR);
+    uint16_t cbr_val = rtl8139_inw(RTL8139_CBR);
+    serial_write("[RTL8139] RCR="); itoa_hex(rcr_val, dbg); serial_write(dbg);
+    serial_write(" CBR="); itoa_hex(cbr_val, dbg); serial_write(dbg); serial_write("\n");
 
     rtl8139_initialized = 1;
     return 0;
