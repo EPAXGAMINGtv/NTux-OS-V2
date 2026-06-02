@@ -82,6 +82,14 @@ int nic_init(void) {
 
     pci_device_t pci_dev;
 
+    // virtio-net first (most reliable in QEMU)
+    if (pci_find_device(0x1AF4, 0x1000, &pci_dev) || pci_find_device(0x1AF4, 0x1041, &pci_dev)) {
+        if (register_virtio_net(&pci_dev) == 0) {
+            nic_initialized = 1;
+            return 0;
+        }
+    }
+
     if (pci_find_device(0x10EC, 0x8168, &pci_dev)) {
         if (register_rtl8111(&pci_dev) == 0) {
             nic_initialized = 1;
@@ -91,21 +99,6 @@ int nic_init(void) {
 
     if (pci_find_device(0x10EC, 0x8139, &pci_dev)) {
         if (register_rtl8139(&pci_dev) == 0) {
-            nic_initialized = 1;
-            return 0;
-        }
-    }
-
-
-    if (pci_find_device(0x1AF4, 0x1000, &pci_dev)) {
-        if (register_virtio_net(&pci_dev) == 0) {
-            nic_initialized = 1;
-            return 0;
-        }
-    }
-    
-    if (pci_find_device(0x1AF4, 0x1041, &pci_dev)) {
-        if (register_virtio_net(&pci_dev) == 0) {
             nic_initialized = 1;
             return 0;
         }

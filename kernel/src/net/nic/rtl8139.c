@@ -25,8 +25,8 @@
 #define RTL8139_RCR_AB        (1 << 3) // Accept Broadcast Packets
 #define RTL8139_RCR_WRAP      (1 << 7) // WRAP
 
-#define RTL8139_CR_TE         (1 << 0) // Transmitter Enable
-#define RTL8139_CR_RE         (1 << 1) // Receiver Enable
+#define RTL8139_CR_TE         (1 << 2) // Transmitter Enable
+#define RTL8139_CR_RE         (1 << 3) // Receiver Enable
 #define RTL8139_CR_RST        (1 << 4) // Reset
 
 static int rtl8139_initialized = 0;
@@ -114,14 +114,17 @@ int rtl8139_init(pci_device_t* pci_dev) {
     rtl8139_outl(RTL8139_RCR, RTL8139_RCR_AB | RTL8139_RCR_AM | RTL8139_RCR_APM | RTL8139_RCR_WRAP | (3 << 11)); // 64k rx buffer
 
     // Enable Transmitter and Receiver
-    serial_write("[RTL8139] CR before="); itoa_hex(rtl8139_inb(RTL8139_CR), dbg); serial_write(dbg); serial_write("\n");
-    rtl8139_outb(RTL8139_CR, RTL8139_CR_TE);
-    serial_write("[RTL8139] CR after TE="); itoa_hex(rtl8139_inb(RTL8139_CR), dbg); serial_write(dbg); serial_write("\n");
-    rtl8139_outb(RTL8139_CR, RTL8139_CR_RE);
-    serial_write("[RTL8139] CR after RE="); itoa_hex(rtl8139_inb(RTL8139_CR), dbg); serial_write(dbg); serial_write("\n");
+    // Need to set RE+TE, but bit 0 (RxEmpty) and bit 1 (TxEmpty) are status and read-only
     rtl8139_outb(RTL8139_CR, RTL8139_CR_RE | RTL8139_CR_TE);
-    uint8_t cr_val = rtl8139_inb(RTL8139_CR);
-    serial_write("[RTL8139] CR final="); itoa_hex(cr_val, dbg); serial_write(dbg); serial_write("\n");
+    serial_write("[RTL8139] CR="); itoa_hex(rtl8139_inb(RTL8139_CR), dbg); serial_write(dbg); serial_write("\n");
+    // Check additional status
+    uint16_t isr = rtl8139_inw(RTL8139_ISR);
+    uint16_t mpc = rtl8139_inw(0x50); // Missed Packet Counter
+    serial_write("[RTL8139] ISR="); itoa_hex(isr, dbg); serial_write(dbg);
+    serial_write(" MPC="); itoa(mpc, dbg, 10); serial_write(dbg); serial_write("\n");
+    // Read back RBSTART to verify
+    uint32_t rbstart = rtl8139_inl(RTL8139_RBSTART);
+    serial_write("[RTL8139] RBSTART="); itoa_hex(rbstart, dbg); serial_write(dbg); serial_write("\n");
     
     // Config TCR
     rtl8139_outl(RTL8139_TCR, (0x03 << 24)); // IFG
@@ -169,13 +172,7 @@ int rtl8139_send_packet(const void* data, size_t length) {
 int rtl8139_receive_packet(void* buffer, size_t buffer_size) {
     if (!rtl8139_initialized) return 0;
 
-    extern void serial_write(const char *str);
-    char buf[64];
-
     uint16_t cbr = rtl8139_inw(RTL8139_CBR);
-    serial_write("[RTL8139] RX rx_ptr="); itoa_hex(rx_ptr, buf); serial_write(buf);
-    serial_write(" cbr="); itoa_hex(cbr, buf); serial_write(buf); serial_write("\n");
-
     if (rx_ptr == cbr) {
         return 0; // No new packets
     }
@@ -184,11 +181,7 @@ int rtl8139_receive_packet(void* buffer, size_t buffer_size) {
     uint16_t rx_status = rx_head[0];
     uint16_t rx_length = rx_head[1]; // includes 4 bytes CRC at end
 
-    serial_write("[RTL8139] RX status="); itoa_hex(rx_status, buf); serial_write(buf);
-    serial_write(" length="); itoa(rx_length, buf, 10); serial_write(buf); serial_write("\n");
-
     if (rx_status & (1 << 5)) {
-        serial_write("[RTL8139] RX bad packet\n");
         rx_ptr = (rx_ptr + 4 + 3) & ~3;
         if (rx_ptr >= RX_BUF_SIZE) rx_ptr = 0;
         rtl8139_outw(RTL8139_CAPR, rx_ptr - 16);
@@ -196,12 +189,10 @@ int rtl8139_receive_packet(void* buffer, size_t buffer_size) {
     }
 
     if (rx_length == 0) {
-        serial_write("[RTL8139] RX zero length\n");
         return 0;
     }
 
     if (rx_length > buffer_size + 4) {
-        serial_write("[RTL8139] RX too large\n");
         rx_ptr = (rx_ptr + rx_length + 4 + 3) & ~3;
         if (rx_ptr >= RX_BUF_SIZE) rx_ptr = 0;
         rtl8139_outw(RTL8139_CAPR, rx_ptr - 16);
@@ -210,8 +201,6 @@ int rtl8139_receive_packet(void* buffer, size_t buffer_size) {
 
     uint8_t* pkt = (uint8_t*)(rx_head) + 4;
     uint16_t net_len = rx_length - 4; // Strip CRC
-
-    serial_write("[RTL8139] RX net_len="); itoa(net_len, buf, 10); serial_write(buf); serial_write("\n");
 
     uint8_t* dest = (uint8_t*)buffer;
     for (int i = 0; i < net_len; i++) {
