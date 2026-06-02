@@ -83,6 +83,34 @@ void pci_scan_ex_range(uint32_t start_bus, uint32_t end_bus, pci_scan_func_ex_t 
     }
 }
 
+typedef struct {
+    uint16_t vendor_id;
+    uint16_t device_id;
+    pci_device_t* out;
+    int found;
+} pci_find_ctx_t;
+
+static void pci_find_cb(uint32_t bus, uint32_t device, uint32_t function, uint16_t vendor, uint16_t dev_id, void* extra) {
+    pci_find_ctx_t* ctx = (pci_find_ctx_t*)extra;
+    if (ctx->found) return;
+    if (vendor == ctx->vendor_id && dev_id == ctx->device_id) {
+        ctx->out->bus = (uint8_t)bus;
+        ctx->out->device = (uint8_t)device;
+        ctx->out->function = (uint8_t)function;
+        ctx->found = 1;
+    }
+}
+
+int pci_find_device(uint16_t vendor_id, uint16_t device_id, pci_device_t* out) {
+    pci_find_ctx_t ctx;
+    ctx.vendor_id = vendor_id;
+    ctx.device_id = device_id;
+    ctx.out = out;
+    ctx.found = 0;
+    pci_scan_ex(pci_find_cb, &ctx);
+    return ctx.found;
+}
+
 uint8_t pci_detect_max_bus(void) {
     uint8_t max_bus = 0;
     for (uint32_t device = 0; device < 32; ++device) {

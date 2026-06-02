@@ -15,7 +15,8 @@
 #include <elf/module_loader.h>
 #include <fs/fd.h>
 #include <fs/fs.h>
-#include <net/net_priv.h>
+#include <network.h>
+#include <net_defs.h>
 #include <interrupt/timer.h>
 #include <arch/x86_64/io.h>
 
@@ -971,7 +972,38 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 regs->rax = (uint64_t)-1;
                 return 0;
             }
-            regs->rax = (uint64_t)net_ping(host, out, (int)cap);
+            ipv4_address_t ip;
+            if (network_dns_lookup(host, &ip) != 0) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            int rtt = network_icmp_single_ping(&ip);
+            if (rtt < 0) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            char buf[128];
+            int pos = 0;
+            const char* m = "Reply from ";
+            while (*m && pos < 120) buf[pos++] = *m++;
+            for (int i = 0; i < 4; i++) {
+                if (i > 0 && pos < 120) buf[pos++] = '.';
+                char num[16];
+                itoa(ip.bytes[i], num, 10);
+                for (int k = 0; num[k] && pos < 120; k++) buf[pos++] = num[k];
+            }
+            m = " time=";
+            while (*m && pos < 120) buf[pos++] = *m++;
+            char num[16];
+            itoa(rtt, num, 10);
+            for (int k = 0; num[k] && pos < 120; k++) buf[pos++] = num[k];
+            m = "ms";
+            while (*m && pos < 120) buf[pos++] = *m++;
+            buf[pos] = '\0';
+            size_t copy_len = (pos < (int)cap - 1) ? pos : (size_t)(cap - 1);
+            for (size_t i = 0; i < copy_len; i++) out[i] = buf[i];
+            out[copy_len] = '\0';
+            regs->rax = (uint64_t)copy_len;
             return 0;
         }
         case INT80_NET_HTTP_GET: {
@@ -982,7 +1014,58 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 regs->rax = (uint64_t)-1;
                 return 0;
             }
-            regs->rax = (uint64_t)net_http_get(url, out, (int)cap);
+            const char* p = url;
+            if (strncmp(p, "http://", 7) == 0) p += 7;
+            else if (strncmp(p, "https://", 8) == 0) p += 8;
+            char host_buf[128];
+            char path_buf[256];
+            int sl = -1;
+            for (int i = 0; p[i]; i++) {
+                if (p[i] == '/' && sl < 0) sl = i;
+            }
+            int hlen;
+            if (sl < 0) {
+                hlen = strlen(p);
+                if (hlen > 127) hlen = 127;
+                for (int i = 0; i < hlen; i++) host_buf[i] = p[i];
+                path_buf[0] = '\0';
+            } else {
+                hlen = sl;
+                if (hlen > 127) hlen = 127;
+                for (int i = 0; i < hlen; i++) host_buf[i] = p[i];
+                int plen = 0;
+                for (int i = sl + 1; p[i] && plen < 255; i++) path_buf[plen++] = p[i];
+                path_buf[plen] = '\0';
+            }
+            host_buf[hlen] = '\0';
+            ipv4_address_t ip;
+            if (network_dns_lookup(host_buf, &ip) != 0) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            if (network_tcp_connect(&ip, 80) != 0) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            char req[512];
+            int rpos = 0;
+            const char* g = "GET /";
+            while (*g && rpos < 500) req[rpos++] = *g++;
+            for (int i = 0; path_buf[i] && rpos < 500; i++) req[rpos++] = path_buf[i];
+            const char* hv = " HTTP/1.0\r\nHost: ";
+            while (*hv && rpos < 500) req[rpos++] = *hv++;
+            for (int i = 0; host_buf[i] && rpos < 500; i++) req[rpos++] = host_buf[i];
+            const char* hd = "\r\n\r\n";
+            while (*hd && rpos < 500) req[rpos++] = *hd++;
+            network_tcp_send(req, rpos);
+            int total = 0;
+            int n;
+            while ((n = network_tcp_recv(out + total, cap - total)) > 0) {
+                total += n;
+                if ((size_t)total >= cap) break;
+            }
+            network_tcp_close();
+            regs->rax = (uint64_t)total;
             return 0;
         }
         case INT80_NET_DEBUG: {
@@ -992,12 +1075,44 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 regs->rax = (uint64_t)-1;
                 return 0;
             }
-            regs->rax = (uint64_t)net_debug_dump(out, (int)cap);
+            char buf[256];
+            int pos = 0;
+            char num[16];
+            const char* s = "NET rx:";
+            while (*s && pos < 240) buf[pos++] = *s++;
+            itoa(network_get_frames_received(), num, 10);
+            for (int k = 0; num[k] && pos < 240; k++) buf[pos++] = num[k];
+            s = " tx:";
+            while (*s && pos < 240) buf[pos++] = *s++;
+            itoa(network_get_frames_sent(), num, 10);
+            for (int k = 0; num[k] && pos < 240; k++) buf[pos++] = num[k];
+            s = " udp_rx:";
+            while (*s && pos < 240) buf[pos++] = *s++;
+            itoa(network_get_udp_packets_received(), num, 10);
+            for (int k = 0; num[k] && pos < 240; k++) buf[pos++] = num[k];
+            s = " init:";
+            while (*s && pos < 240) buf[pos++] = *s++;
+            itoa(network_is_initialized() ? 1 : 0, num, 10);
+            for (int k = 0; num[k] && pos < 240; k++) buf[pos++] = num[k];
+            s = " has_ip:";
+            while (*s && pos < 240) buf[pos++] = *s++;
+            itoa(network_has_ip() ? 1 : 0, num, 10);
+            for (int k = 0; num[k] && pos < 240; k++) buf[pos++] = num[k];
+            buf[pos] = '\0';
+            size_t copy_len = (pos < (int)cap - 1) ? pos : (size_t)(cap - 1);
+            for (size_t i = 0; i < copy_len; i++) out[i] = buf[i];
+            out[copy_len] = '\0';
+            regs->rax = (uint64_t)copy_len;
             return 0;
         }
         case INT80_NET_SET_DNS: {
-            uint32_t ip = (uint32_t)regs->rdi;
-            regs->rax = (uint64_t)net_set_dns_server(ip);
+            uint32_t ip_val = (uint32_t)regs->rdi;
+            ipv4_address_t ip;
+            ip.bytes[0] = (ip_val >> 24) & 0xFF;
+            ip.bytes[1] = (ip_val >> 16) & 0xFF;
+            ip.bytes[2] = (ip_val >> 8) & 0xFF;
+            ip.bytes[3] = ip_val & 0xFF;
+            regs->rax = (uint64_t)network_set_dns_server(&ip);
             return 0;
         }
         case INT80_DESKAPI_PUSH: {
