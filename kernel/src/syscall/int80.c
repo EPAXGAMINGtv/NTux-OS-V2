@@ -25,6 +25,31 @@ static uint64_t g_gpu_blit_count = 0;
 #include <mm/kmalloc.h>
 #include <mm/pmm.h>
 #include <lib/string.h>
+#include <lib/kutils.h>
+
+static int parse_ipv4(const char* s, ipv4_address_t* ip) {
+    int octets[4] = { -1, -1, -1, -1 };
+    int cur = 0, val = 0;
+    for (int i = 0; s[i] && cur < 4; i++) {
+        if (s[i] >= '0' && s[i] <= '9') {
+            val = val * 10 + (s[i] - '0');
+        } else if (s[i] == '.') {
+            if (i == 0 || s[i-1] == '.') return -1;
+            octets[cur++] = val; val = 0;
+        } else {
+            return -1;
+        }
+    }
+    if (cur != 3) return -1;
+    octets[3] = val;
+    for (int i = 0; i < 4; i++)
+        if (octets[i] < 0 || octets[i] > 255) return -1;
+    ip->bytes[0] = (uint8_t)octets[0];
+    ip->bytes[1] = (uint8_t)octets[1];
+    ip->bytes[2] = (uint8_t)octets[2];
+    ip->bytes[3] = (uint8_t)octets[3];
+    return 0;
+}
 
 typedef struct {
     char name[64];
@@ -973,9 +998,11 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 return 0;
             }
             ipv4_address_t ip;
-            if (network_dns_lookup(host, &ip) != 0) {
-                regs->rax = (uint64_t)-1;
-                return 0;
+            if (parse_ipv4(host, &ip) != 0) {
+                if (network_dns_lookup(host, &ip) != 0) {
+                    regs->rax = (uint64_t)-1;
+                    return 0;
+                }
             }
             int rtt = network_icmp_single_ping(&ip);
             if (rtt < 0) {
@@ -1039,9 +1066,11 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             }
             host_buf[hlen] = '\0';
             ipv4_address_t ip;
-            if (network_dns_lookup(host_buf, &ip) != 0) {
-                regs->rax = (uint64_t)-1;
-                return 0;
+            if (parse_ipv4(host_buf, &ip) != 0) {
+                if (network_dns_lookup(host_buf, &ip) != 0) {
+                    regs->rax = (uint64_t)-1;
+                    return 0;
+                }
             }
             if (network_tcp_connect(&ip, 80) != 0) {
                 regs->rax = (uint64_t)-1;
