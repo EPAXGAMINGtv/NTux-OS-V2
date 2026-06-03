@@ -183,6 +183,17 @@ static int console_input_claim_or_is_current_for_current(void) {
     return console_input_claim_or_is_current(tid);
 }
 
+static int str_has_ci(const char* s, const char* sub) {
+    if (!s || !sub || !*sub) return 0;
+    for (; *s; s++) {
+        const char* a = s;
+        const char* b = sub;
+        while (*a && *b && ((*a | 32) == (*b | 32))) { a++; b++; }
+        if (!*b) return 1;
+    }
+    return 0;
+}
+
 uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
     if (!regs) return 0;
 
@@ -1037,64 +1048,229 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             const char* url = (const char*)(uintptr_t)regs->rdi;
             char* out = (char*)(uintptr_t)regs->rsi;
             uint64_t cap = regs->rdx;
-            if (!user_cstr_ok(url, 256u) || !out || cap == 0 || cap > 8192u || !user_ptr_range_ok(out, (size_t)cap)) {
+            if (!user_cstr_ok(url, 512u) || !out || cap == 0 || cap > 65536u || !user_ptr_range_ok(out, (size_t)cap)) {
                 regs->rax = (uint64_t)-1;
                 return 0;
             }
-            const char* p = url;
-            if (strncmp(p, "http://", 7) == 0) p += 7;
-            else if (strncmp(p, "https://", 8) == 0) p += 8;
-            char host_buf[128];
-            char path_buf[256];
-            int sl = -1;
-            for (int i = 0; p[i]; i++) {
-                if (p[i] == '/' && sl < 0) sl = i;
-            }
-            int hlen;
-            if (sl < 0) {
-                hlen = strlen(p);
-                if (hlen > 127) hlen = 127;
-                for (int i = 0; i < hlen; i++) host_buf[i] = p[i];
-                path_buf[0] = '\0';
-            } else {
-                hlen = sl;
-                if (hlen > 127) hlen = 127;
-                for (int i = 0; i < hlen; i++) host_buf[i] = p[i];
-                int plen = 0;
-                for (int i = sl + 1; p[i] && plen < 255; i++) path_buf[plen++] = p[i];
-                path_buf[plen] = '\0';
-            }
-            host_buf[hlen] = '\0';
-            ipv4_address_t ip;
-            if (parse_ipv4(host_buf, &ip) != 0) {
-                if (network_dns_lookup(host_buf, &ip) != 0) {
-                    regs->rax = (uint64_t)-1;
+
+            char* buf = (char*)kmalloc(65536);
+            if (!buf) { regs->rax = -1; return 0; }
+
+            char curr_url[512];
+            strncpy(curr_url, url, sizeof(curr_url) - 1);
+            curr_url[sizeof(curr_url) - 1] = '\0';
+
+            int redirects = 0;
+            int body_len = -1;
+
+            while (redirects < 5) {
+                const char* p = curr_url;
+                int is_https = 0;
+                if (strncmp(p, "https://", 8) == 0) { is_https = 1; p += 8; }
+                else if (strncmp(p, "http://", 7) == 0) p += 7;
+                else { body_len = -1; break; }
+
+                if (is_https) {
+                    const char* msg = "HTTPS not supported.\n";
+                    size_t mlen = strlen(msg);
+                    if (mlen > cap) mlen = cap;
+                    memcpy(out, msg, mlen);
+                    regs->rax = mlen;
+                    kfree(buf);
                     return 0;
                 }
+
+                char host[128];
+                char path[256];
+                int slash = -1;
+                for (int i = 0; p[i]; i++) {
+                    if (p[i] == '/' && slash < 0) slash = i;
+                }
+                if (slash < 0) {
+                    strncpy(host, p, sizeof(host) - 1);
+                    host[sizeof(host) - 1] = '\0';
+                    path[0] = '/'; path[1] = '\0';
+                } else {
+                    int hlen = slash;
+                    if (hlen > 127) hlen = 127;
+                    memcpy(host, p, (size_t)hlen);
+                    host[hlen] = '\0';
+                    int plen = 0;
+                    for (int i = slash; p[i] && plen < 255; i++) path[plen++] = p[i];
+                    path[plen] = '\0';
+                }
+
+                ipv4_address_t ip;
+                if (parse_ipv4(host, &ip) != 0) {
+                    if (network_dns_lookup(host, &ip) != 0) { body_len = -1; break; }
+                }
+
+                if (network_tcp_connect(&ip, 80) != 0) { body_len = -1; break; }
+
+                char req[512];
+                int rp = 0;
+                const char* g = "GET ";
+                while (*g && rp < 500) req[rp++] = *g++;
+                char* pp = path;
+                while (*pp && rp < 500) req[rp++] = *pp++;
+                const char* v = " HTTP/1.1\r\nHost: ";
+                while (*v && rp < 500) req[rp++] = *v++;
+                char* hp = host;
+                while (*hp && rp < 500) req[rp++] = *hp++;
+                const char* h2 = "\r\nUser-Agent: NTux-Browser/1.0\r\nAccept: text/html,*/*;q=0.8\r\nAccept-Language: en\r\nConnection: close\r\n\r\n";
+                while (*h2 && rp < 500) req[rp++] = *h2++;
+                network_tcp_send(req, rp);
+
+                int total = 0;
+                int n;
+                while ((n = network_tcp_recv(buf + total, 65536 - total)) > 0) {
+                    total += n;
+                    if (total >= 65536) break;
+                }
+                network_tcp_close();
+
+                if (total <= 0) { body_len = -1; break; }
+                buf[total] = '\0';
+
+                // Find end of headers
+                char* hdr_end = NULL;
+                for (int i = 0; i < total - 3; i++) {
+                    if (buf[i] == '\r' && buf[i+1] == '\n' && buf[i+2] == '\r' && buf[i+3] == '\n') {
+                        hdr_end = buf + i;
+                        break;
+                    }
+                }
+                if (!hdr_end) { body_len = -1; break; }
+
+                // Parse status
+                int status = 0;
+                char* sp = buf;
+                while (*sp && *sp != ' ') sp++;
+                if (*sp == ' ') { sp++; while (*sp >= '0' && *sp <= '9') { status = status * 10 + (*sp - '0'); sp++; } }
+
+                // Parse headers
+                char* body = hdr_end + 4;
+                int body_remain = total - (int)(body - buf);
+                int content_len = -1;
+                int is_chunked = 0;
+                char* location = NULL;
+
+                char* line = buf;
+                while (line && line < hdr_end) {
+                    char* nl = NULL;
+                    for (int i = 0; line + i < hdr_end; i++) {
+                        if (line[i] == '\r' && line + i + 1 < hdr_end && line[i+1] == '\n') {
+                            nl = line + i;
+                            break;
+                        }
+                    }
+                    if (!nl) break;
+                    *nl = '\0';
+
+                    // Check header name
+                    char* val = line;
+                    while (*val && *val != ':') val++;
+                    if (*val == ':') {
+                        *val = '\0';
+                        val++;
+                        while (*val == ' ') val++;
+
+                        if (strcmp(line, "Content-Length") == 0) content_len = atoi(val);
+                        else if (strcmp(line, "Location") == 0) location = val;
+                        else {
+                            char* low = line;
+                            for (int i = 0; low[i]; i++) if (low[i] >= 'A' && low[i] <= 'Z') low[i] = (char)(low[i] + 32);
+                            if (strcmp(low, "transfer-encoding") == 0 && str_has_ci(val, "chunked")) is_chunked = 1;
+                        }
+                        *val = ':';
+                    }
+
+                    line = nl + 2;
+                }
+
+                // Handle redirect
+                if (status >= 300 && status < 400 && location) {
+                    int loc_len = 0;
+                    while (location[loc_len] && location[loc_len] != '\r' && location[loc_len] != '\n') loc_len++;
+                    location[loc_len] = '\0';
+                    if (location[0] == '/') {
+                        char tmp[512];
+                        int ti = 0;
+                        const char* tsrc = "http://";
+                        while (*tsrc && ti < 510) tmp[ti++] = *tsrc++;
+                        int hi = 0;
+                        while (host[hi] && ti < 510) tmp[ti++] = host[hi++];
+                        int li = 0;
+                        while (location[li] && ti < 510) tmp[ti++] = location[li++];
+                        tmp[ti] = '\0';
+                        strncpy(curr_url, tmp, sizeof(curr_url) - 1);
+                    } else {
+                        strncpy(curr_url, location, sizeof(curr_url) - 1);
+                    }
+                    curr_url[sizeof(curr_url) - 1] = '\0';
+                    redirects++;
+                    continue;
+                }
+
+                if (status >= 200 && status < 300) {
+                    if (is_chunked) {
+                        char* src = body;
+                        char* dst = body;
+                        int decoded = 0;
+                        while (src < buf + total) {
+                            char* size_end = NULL;
+                            for (int i = 0; src + i < buf + total; i++) {
+                                if (src[i] == '\r' && src + i + 1 <= buf + total && src[i+1] == '\n') {
+                                    size_end = src + i;
+                                    break;
+                                }
+                            }
+                            if (!size_end) break;
+                            *size_end = '\0';
+                            int chunk_sz = 0;
+                            for (char* h = src; *h; h++) {
+                                char c = *h;
+                                chunk_sz <<= 4;
+                                if (c >= '0' && c <= '9') chunk_sz |= (c - '0');
+                                else if (c >= 'a' && c <= 'f') chunk_sz |= (c - 'a' + 10);
+                                else if (c >= 'A' && c <= 'F') chunk_sz |= (c - 'A' + 10);
+                            }
+                            src = size_end + 2;
+                            if (chunk_sz == 0) break;
+                            memmove(dst, src, (size_t)chunk_sz);
+                            dst += chunk_sz;
+                            decoded += chunk_sz;
+                            src += chunk_sz + 2;
+                        }
+                        body_remain = decoded;
+                    } else if (content_len >= 0 && body_remain > content_len) {
+                        body_remain = content_len;
+                    }
+
+                    int copy = body_remain;
+                    if (copy < 0) copy = 0;
+                    if (copy > (int)cap - 1) copy = (int)cap - 1;
+                    if (copy > 0) memcpy(out, body, (size_t)copy);
+                    out[copy] = '\0';
+                    body_len = copy;
+                    break;
+                }
+
+                body_len = -1;
+                break;
             }
-            if (network_tcp_connect(&ip, 80) != 0) {
-                regs->rax = (uint64_t)-1;
-                return 0;
+
+            if (body_len < 0) {
+                const char* err = "HTTP request failed.\n";
+                size_t elen = strlen(err);
+                if (elen > cap) elen = cap;
+                memcpy(out, err, elen);
+                regs->rax = elen;
+            } else {
+                regs->rax = (uint64_t)body_len;
             }
-            char req[512];
-            int rpos = 0;
-            const char* g = "GET /";
-            while (*g && rpos < 500) req[rpos++] = *g++;
-            for (int i = 0; path_buf[i] && rpos < 500; i++) req[rpos++] = path_buf[i];
-            const char* hv = " HTTP/1.0\r\nHost: ";
-            while (*hv && rpos < 500) req[rpos++] = *hv++;
-            for (int i = 0; host_buf[i] && rpos < 500; i++) req[rpos++] = host_buf[i];
-            const char* hd = "\r\n\r\n";
-            while (*hd && rpos < 500) req[rpos++] = *hd++;
-            network_tcp_send(req, rpos);
-            int total = 0;
-            int n;
-            while ((n = network_tcp_recv(out + total, cap - total)) > 0) {
-                total += n;
-                if ((size_t)total >= cap) break;
-            }
-            network_tcp_close();
-            regs->rax = (uint64_t)total;
+
+            kfree(buf);
             return 0;
         }
         case INT80_NET_DEBUG: {
