@@ -17,13 +17,12 @@ QEMUFLAGS := \
     -device qemu-xhci \
     -device sdhci-pci \
     -device virtio-rng-pci \
-	-netdev user,id=net0 \
-	-device virtio-net-pci,netdev=net0 \
+    -netdev user,id=net0 \
+    -device e1000,netdev=net0 \
     -device ich9-intel-hda \
     -device hda-duplex \
     -drive if=none,id=sdcard,file=disk.img,format=raw,cache=none,aio=native \
     -device sd-card,drive=sdcard
-
 override IMAGE_NAME := NTux-OS-$(ARCH)
 # Optional: absolute or relative path to your IWAD (e.g. /path/to/doom1.wad).
 # If set, `make create-drives` copies it to drive_fat32.img as /doom1.wad.

@@ -97,13 +97,8 @@ int rtl8139_init(pci_device_t* pci_dev) {
     }
     serial_write("\n");
 
-    extern void serial_write(const char *str);
-    char dbg[64];
-
     // Init RX buffer
     uint32_t rx_phys = v2p((uint64_t)(uintptr_t)rx_buffer);
-    serial_write("[RTL8139] RX buf virt="); itoa_hex((uint64_t)(uintptr_t)rx_buffer, dbg); serial_write(dbg);
-    serial_write(" phys="); itoa_hex(rx_phys, dbg); serial_write(dbg); serial_write("\n");
     rtl8139_outl(RTL8139_RBSTART, rx_phys);
 
     // Set IMR / ISR
@@ -114,26 +109,10 @@ int rtl8139_init(pci_device_t* pci_dev) {
     rtl8139_outl(RTL8139_RCR, RTL8139_RCR_AB | RTL8139_RCR_AM | RTL8139_RCR_APM | RTL8139_RCR_WRAP | (3 << 11)); // 64k rx buffer
 
     // Enable Transmitter and Receiver
-    // Need to set RE+TE, but bit 0 (RxEmpty) and bit 1 (TxEmpty) are status and read-only
     rtl8139_outb(RTL8139_CR, RTL8139_CR_RE | RTL8139_CR_TE);
-    serial_write("[RTL8139] CR="); itoa_hex(rtl8139_inb(RTL8139_CR), dbg); serial_write(dbg); serial_write("\n");
-    // Check additional status
-    uint16_t isr = rtl8139_inw(RTL8139_ISR);
-    uint16_t mpc = rtl8139_inw(0x50); // Missed Packet Counter
-    serial_write("[RTL8139] ISR="); itoa_hex(isr, dbg); serial_write(dbg);
-    serial_write(" MPC="); itoa(mpc, dbg, 10); serial_write(dbg); serial_write("\n");
-    // Read back RBSTART to verify
-    uint32_t rbstart = rtl8139_inl(RTL8139_RBSTART);
-    serial_write("[RTL8139] RBSTART="); itoa_hex(rbstart, dbg); serial_write(dbg); serial_write("\n");
     
     // Config TCR
     rtl8139_outl(RTL8139_TCR, (0x03 << 24)); // IFG
-
-    // Read back RCR and CBR after init
-    uint32_t rcr_val = rtl8139_inl(RTL8139_RCR);
-    uint16_t cbr_val = rtl8139_inw(RTL8139_CBR);
-    serial_write("[RTL8139] RCR="); itoa_hex(rcr_val, dbg); serial_write(dbg);
-    serial_write(" CBR="); itoa_hex(cbr_val, dbg); serial_write(dbg); serial_write("\n");
 
     rtl8139_initialized = 1;
     return 0;
@@ -143,27 +122,13 @@ int rtl8139_send_packet(const void* data, size_t length) {
     if (!rtl8139_initialized) return -1;
     if (length > 1792) return -1;
 
-    extern void serial_write(const char *str);
-    char buf[64];
-    serial_write("[RTL8139] TX len="); itoa(length, buf, 10); serial_write(buf); serial_write("\n");
-
-    // Use current tx buffer
     uint8_t* tx_buf = tx_buffers[tx_curr];
     uint8_t* src = (uint8_t*)data;
     for (size_t i = 0; i < length; i++) tx_buf[i] = src[i];
 
     uint32_t phys = v2p((uint64_t)(uintptr_t)tx_buf);
-    serial_write("[RTL8139] TX phys="); itoa_hex(phys, buf); serial_write(buf);
-    serial_write(" virt="); itoa_hex((uint64_t)(uintptr_t)tx_buf, buf); serial_write(buf); serial_write("\n");
-
     rtl8139_outl(RTL8139_TSAD0 + (tx_curr * 4), phys);
-    
-    // Set OWN bit (bit 13) to start transmission
     rtl8139_outl(RTL8139_TSD0 + (tx_curr * 4), length | (1 << 13));
-
-    // Check TSD after write
-    uint32_t tsd = rtl8139_inl(RTL8139_TSD0 + (tx_curr * 4));
-    serial_write("[RTL8139] TX TSD after="); itoa_hex(tsd, buf); serial_write(buf); serial_write("\n");
 
     tx_curr = (tx_curr + 1) % 4;
     return 0;
