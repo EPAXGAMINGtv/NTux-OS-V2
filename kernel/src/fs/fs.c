@@ -475,9 +475,9 @@ static uint8_t fs_gpt_type_to_mbr_compat(const uint8_t guid[16]) {
         0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4
     };
 
-    if (memcmp(guid, guid_efi_system, 16)) return 0xEF;
-    if (memcmp(guid, guid_ms_basic, 16)) return 0x0C;
-    if (memcmp(guid, guid_linux_fs, 16)) return 0x83;
+    if (memcmp(guid, guid_efi_system, 16) == 0) return 0xEF;
+    if (memcmp(guid, guid_ms_basic, 16) == 0) return 0x0C;
+    if (memcmp(guid, guid_linux_fs, 16) == 0) return 0x83;
     return 0;
 }
 
@@ -587,7 +587,7 @@ static void fs_probe_partitions(uint8_t drive) {
         uint8_t gpt_sec[ATA_SECTOR_SIZE];
         if (fs_device_read_sectors(drive, 1, 1, gpt_sec) == 0) {
             const gpt_header_t* gpt = (const gpt_header_t*)gpt_sec;
-            if (memcmp(gpt->signature, "EFI PART", 8) &&
+            if (memcmp(gpt->signature, "EFI PART", 8) == 0 &&
                 gpt->header_size >= 92u &&
                 gpt->header_size <= ATA_SECTOR_SIZE &&
                 gpt->size_of_partition_entry >= 128u &&
@@ -1205,7 +1205,7 @@ size_t fs_list_partitions(uint8_t drive, fs_partition_info_t* out, size_t max_en
         uint8_t gpt_sec[ATA_SECTOR_SIZE];
         if (fs_device_read_sectors(drive, 1, 1, gpt_sec) == 0) {
             const gpt_header_t* gpt = (const gpt_header_t*)gpt_sec;
-            if (memcmp(gpt->signature, "EFI PART", 8) &&
+            if (memcmp(gpt->signature, "EFI PART", 8) == 0 &&
                 gpt->header_size >= 92u &&
                 gpt->header_size <= ATA_SECTOR_SIZE &&
                 gpt->size_of_partition_entry >= 128u &&
