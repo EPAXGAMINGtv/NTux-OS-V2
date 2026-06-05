@@ -3,7 +3,7 @@
 #include <arch/x86_64/io.h>
 #include <interrupt/irq.h>
 #include <interrupt/pic.h>
-#include <drivers/framebuffer/fb.h>
+#include <drivers/gpu/graphics.h>
 #include <drivers/framebuffer/kprint.h>
 #include <drivers/ps2/ringbuffer.h>
 #include <drivers/input/input.h>
@@ -145,10 +145,7 @@ bool mouse_init(void) {
 
     mouse_cycle = 0;
     mouse_scroll = 0;
-    if (framebuffer_request.response && framebuffer_request.response->framebuffer_count > 0) {
-        volatile struct limine_framebuffer* fb = framebuffer_request.response->framebuffers[0];
-        if (fb) mouse_set_bounds((int)fb->width, (int)fb->height);
-    }
+    mouse_set_bounds((int)gpu_get_width(), (int)gpu_get_height());
     mouse_try_enable_wheel();
     irq_register_handler(12, mouse_irq_handler);
     pic_clear_mask(2);
@@ -248,12 +245,11 @@ void mouse_irq_handler(void) {
 }
 
 
-void draw_mouse_cursor(volatile struct limine_framebuffer* fb) {
-    if (!fb) return;
-    mouse_set_bounds((int)fb->width, (int)fb->height);
-    put_pixel_lim(fb, mouse_X, mouse_y, 0xFFFFFFFF);
-    put_pixel_lim(fb, mouse_X + 1, mouse_y, 0xFFFFFFFF);
-    put_pixel_lim(fb, mouse_X, mouse_y + 1, 0xFFFFFFFF);
+void draw_mouse_cursor(void) {
+    mouse_set_bounds((int)gpu_get_width(), (int)gpu_get_height());
+    gpu_put_pixel(mouse_X, mouse_y, 0xFFFFFFFF);
+    gpu_put_pixel(mouse_X + 1, mouse_y, 0xFFFFFFFF);
+    gpu_put_pixel(mouse_X, mouse_y + 1, 0xFFFFFFFF);
 }
 
 int mouse_get_x(void) { return mouse_X; }

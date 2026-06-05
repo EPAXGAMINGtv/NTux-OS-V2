@@ -1,8 +1,9 @@
 #include <syscall/int80.h>
 #include <syscall/deskapi.h>
+#include <limine.h>
 
 #include <sched/thread.h>
-#include <drivers/framebuffer/fb.h>
+#include <drivers/gpu/graphics.h>
 #include <drivers/framebuffer/kprint.h>
 #include <drivers/input/input.h>
 #include <drivers/input/console_input.h>
@@ -23,6 +24,8 @@
 #include <mm/pmm.h>
 #include <lib/string.h>
 #include <lib/kutils.h>
+
+extern volatile struct limine_framebuffer_request framebuffer_request;
 
 static int parse_ipv4(const char* s, ipv4_address_t* ip) {
     int octets[4] = { -1, -1, -1, -1 };
@@ -276,12 +279,8 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             return 0;
         }
         case INT80_CLEAR_SCREEN: {
-            if (!framebuffer_request.response || framebuffer_request.response->framebuffer_count < 1) {
-                regs->rax = (uint64_t)-1;
-                return 0;
-            }
-            volatile struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
-            clear_screen_lim(fb, (uint32_t)regs->rdi);
+            gpu_clear_screen((uint32_t)regs->rdi);
+            gpu_flush_all();
             if (g_printer.cursor) {
                 g_printer.cursor->x = 0;
                 g_printer.cursor->y = 0;

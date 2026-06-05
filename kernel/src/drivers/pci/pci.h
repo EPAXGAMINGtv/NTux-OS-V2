@@ -32,5 +32,6 @@ static inline void pci_write_config(uint32_t bus, uint32_t device, uint32_t func
 }
 
 int pci_find_device(uint16_t vendor_id, uint16_t device_id, pci_device_t* out);
+uint8_t pci_find_capability(uint32_t bus, uint32_t device, uint32_t function, uint8_t cap_id);
 
 #endif

@@ -11,9 +11,9 @@
 #include <interrupt/interrupts.h>
 #include <interrupt/timer.h>
 
-#include <drivers/framebuffer/fb.h>
 #include <drivers/framebuffer/cursor.h>
 #include <drivers/framebuffer/kprint.h>
+#include <drivers/gpu/graphics.h>
 #include <drivers/ps2/keyboard.h>
 #include <drivers/ps2/mouse.h>
 #include <drivers/cmos/cmos.h>
@@ -45,9 +45,6 @@ volatile struct limine_memmap_request memmap_request = {
     .revision = 0
 };
 
-volatile struct limine_framebuffer* front_buffer;
-volatile struct limine_framebuffer* back_buffer;
-
 static struct limine_memmap_response* memmap;
 static cursor_t boot_cursor;
 static int g_qemu_debug_serial = 1;
@@ -71,28 +68,37 @@ static void init_fpu_sse(void) {
 }
 
 static void init_fb(void) {
-    if (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count < 1) {
+    if (graphics_init() != 0) {
         while (1) {
             __asm__ volatile("hlt");
         }
     }
 
-    front_buffer = framebuffer_request.response->framebuffers[0];
-    back_buffer = framebuffer_request.response->framebuffers[0];
+    uint32_t fb_w = gpu_get_width();
+    uint32_t fb_h = gpu_get_height();
 
-    clear_screen_lim(back_buffer, COLOR_BLACK);
-    init_cursor(&boot_cursor, (int)back_buffer->width, (int)back_buffer->height);
-    init_kprint_global(back_buffer, &boot_cursor, COLOR_WHITE);
+    gpu_clear_screen(COLOR_BLACK);
+    init_cursor(&boot_cursor, (int)fb_w, (int)fb_h);
+    init_kprint_global(&boot_cursor, COLOR_WHITE);
     kprint_set_serial_enabled(g_qemu_debug_serial);
+
+    gpu_driver_t* gpu = graphics_get_driver();
+    if (gpu) {
+        kprint("[GPU] ");
+        kprint(gpu->name);
+        kprint(gpu->is_accelerated ? " (accelerated)\n" : " (framebuffer)\n");
+    }
+
     {
         const char* title = "NTux-OS";
         int scale = 4;
         int tw = (int)strlen(title) * 8 * scale;
-        int tx = ((int)back_buffer->width - tw) / 2;
-        int ty = ((int)back_buffer->height / 2) - 40;
-        draw_scaled_text_lim(back_buffer, tx, ty, title, COLOR_WHITE, scale);
-        draw_scaled_text_lim(back_buffer, tx + 8, ty + 40, "booting...", 0xFFAAAAAAu, 2);
+        int tx = ((int)fb_w - tw) / 2;
+        int ty = ((int)fb_h / 2) - 40;
+        gpu_draw_scaled_text(tx, ty, title, COLOR_WHITE, scale);
+        gpu_draw_scaled_text(tx + 8, ty + 40, "booting...", 0xFFAAAAAAu, 2);
     }
+    gpu_flush_all();
     kprint_ok("Framebuffer init completed");
 }
 

@@ -7,12 +7,14 @@
 
 #define PAINT_W 1920
 #define PAINT_H 1080
-#define CANVAS_W 1920
-#define CANVAS_H 1080
-#define CANVAS_SCALE 1
-#define TOOLBAR_H 48
 
+#define TOOLBAR_H 48
 #define PANEL_W 190
+
+#define CANVAS_SCALE 1
+
+#define CANVAS_W (PAINT_W - PANEL_W - 12)
+#define CANVAS_H (PAINT_H - TOOLBAR_H)
 #define PANEL_PAD 10
 #define BTN_H 24
 
@@ -86,16 +88,26 @@ static int str_has_ext(const char* s) {
     return 0;
 }
 
-static void layout_canvas(int* out_x, int* out_y, int* out_w, int* out_h, int* out_panel_x) {
-    int canvas_w = CANVAS_W * CANVAS_SCALE;
-    int canvas_h = CANVAS_H * CANVAS_SCALE;
+static void layout_canvas(
+    int* out_x,
+    int* out_y,
+    int* out_w,
+    int* out_h,
+    int* out_panel_x)
+{
     int cx = 0;
-    int cy = 0;
+    int cy = TOOLBAR_H;
+
+    int cw = CANVAS_W;
+    int ch = CANVAS_H;
+
     if (out_x) *out_x = cx;
     if (out_y) *out_y = cy;
-    if (out_w) *out_w = canvas_w;
-    if (out_h) *out_h = canvas_h;
-    if (out_panel_x) *out_panel_x = PAINT_W - PANEL_W - 12;
+    if (out_w) *out_w = cw;
+    if (out_h) *out_h = ch;
+
+    if (out_panel_x)
+        *out_panel_x = PAINT_W - PANEL_W;
 }
 
 static void canvas_clear(uint32_t color) {
@@ -411,7 +423,7 @@ static void draw_panel(window_t id) {
     int canvas_x, canvas_y, canvas_w, canvas_h, panel_x;
     layout_canvas(&canvas_x, &canvas_y, &canvas_w, &canvas_h, &panel_x);
     int panel_y = TOOLBAR_H + 12;
-    int panel_h = canvas_h - panel_y - 12;
+    int panel_h = PAINT_H - panel_y - 12;
     window_draw_rect(id, panel_x, panel_y, PANEL_W, panel_h, 0xFF0E141Cu, 1);
     window_draw_rect(id, panel_x, panel_y, PANEL_W, panel_h, 0xFF233044u, 0);
     window_draw_text(id, panel_x + PANEL_PAD, panel_y + 10, 0xFFB7D6F2u, "Palette");
@@ -474,15 +486,37 @@ static void draw_panel(window_t id) {
     window_draw_text(id, panel_x + PANEL_PAD, by, 0xFF9BB6D0u, "[ ] Size  B Shape");
 }
 
-static int canvas_hit(int mx, int my, int* out_cx, int* out_cy) {
-    int canvas_x, canvas_y, canvas_w, canvas_h;
-    layout_canvas(&canvas_x, &canvas_y, &canvas_w, &canvas_h, NULL);
-    if (mx < canvas_x || my < canvas_y || mx >= canvas_x + canvas_w || my >= canvas_y + canvas_h) return 0;
-    int cx = (mx - canvas_x) / CANVAS_SCALE;
-    int cy = (my - canvas_y) / CANVAS_SCALE;
-    if (cx < 0 || cy < 0 || cx >= CANVAS_W || cy >= CANVAS_H) return 0;
+static int canvas_hit(int mx, int my, int* out_cx, int* out_cy)
+{
+    int canvas_x;
+    int canvas_y;
+    int canvas_w;
+    int canvas_h;
+
+    layout_canvas(
+        &canvas_x,
+        &canvas_y,
+        &canvas_w,
+        &canvas_h,
+        NULL);
+
+    if (mx < canvas_x) return 0;
+    if (my < canvas_y) return 0;
+    if (mx >= canvas_x + canvas_w) return 0;
+    if (my >= canvas_y + canvas_h) return 0;
+
+    int cx = mx - canvas_x;
+    int cy = my - canvas_y;
+
+    if (cx < 0 || cy < 0)
+        return 0;
+
+    if (cx >= CANVAS_W || cy >= CANVAS_H)
+        return 0;
+
     if (out_cx) *out_cx = cx;
     if (out_cy) *out_cy = cy;
+
     return 1;
 }
 
@@ -506,15 +540,21 @@ void ntux_user_entry(void) {
 
     g_canvas = (uint32_t*)malloc((size_t)CANVAS_W * (size_t)CANVAS_H * sizeof(uint32_t));
     if (!g_canvas) sys_exit(1);
-    canvas_clear(0xFFFFFFFFu);
-
+    window_clear(id, 0xFF0B1119u);
+    draw_toolbar(id);
+    draw_panel(id);
+    draw_canvas_full(id);
+    window_present(id);
     int dirty_all = 1;
     int dirty_any = 0;
-    int dirty_x0 = CANVAS_W, dirty_y0 = CANVAS_H, dirty_x1 = 0, dirty_y1 = 0;
+    int dirty_x0 = CANVAS_W;
+    int dirty_y0 = CANVAS_H;
+    int dirty_x1 = -1;
+    int dirty_y1 = -1;
     int painting = 0;
     int last_cx = 0, last_cy = 0;
     int force_redraw = 8;
-    int always_full_redraw = 1;
+    int always_full_redraw = 0;
 
     for (;;) {
         if (window_should_close(id)) break;

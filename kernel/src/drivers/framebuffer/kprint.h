@@ -3,10 +3,8 @@
 
 #include <stdint.h>
 #include "cursor.h"
-#include "fb.h"
 
 typedef struct {
-    volatile struct limine_framebuffer* fb;
     cursor_t* cursor;
     uint32_t color;
 } kprint_t;
@@ -15,7 +13,7 @@ extern kprint_t g_printer;
 
 void itoa(int num, char* str, int base);
 
-void init_kprint_global(volatile struct limine_framebuffer* fb, cursor_t* cursor, uint32_t color);
+void init_kprint_global(cursor_t* cursor, uint32_t color);
 void kprint(const char* text);
 void kprintcolor(const char* text, uint32_t color);
 void kprint_int(int num);

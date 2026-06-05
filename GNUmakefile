@@ -17,6 +17,7 @@ QEMUFLAGS := \
     -device qemu-xhci \
     -device sdhci-pci \
     -device virtio-rng-pci \
+    -device virtio-gpu-pci \
     -netdev user,id=net0 \
     -device e1000,netdev=net0 \
     -drive if=none,id=sdcard,file=disk.img,format=raw,cache=none,aio=native \

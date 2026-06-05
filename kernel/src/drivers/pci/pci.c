@@ -111,6 +111,27 @@ int pci_find_device(uint16_t vendor_id, uint16_t device_id, pci_device_t* out) {
     return ctx.found;
 }
 
+uint8_t pci_find_capability(uint32_t bus, uint32_t device, uint32_t function, uint8_t cap_id) {
+    uint16_t status = pci_read_field(bus, device, function, 0x06, 2);
+    if (!(status & (1 << 4)))
+        return 0;
+
+    uint8_t cap_ptr = pci_read_field(bus, device, function, 0x34, 1);
+    cap_ptr &= 0xFC;
+    if (cap_ptr == 0)
+        return 0;
+
+    while (cap_ptr != 0) {
+        uint8_t found_id = pci_read_field(bus, device, function, cap_ptr, 1);
+        if (found_id == cap_id)
+            return cap_ptr;
+        cap_ptr = pci_read_field(bus, device, function, cap_ptr + 1, 1);
+        cap_ptr &= 0xFC;
+    }
+
+    return 0;
+}
+
 uint8_t pci_detect_max_bus(void) {
     uint8_t max_bus = 0;
     for (uint32_t device = 0; device < 32; ++device) {

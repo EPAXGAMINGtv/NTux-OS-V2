@@ -2,7 +2,6 @@
 #define MOUSE_H
 
 #include <stdbool.h>
-#include <limine.h>
 #include <stdint.h>
 
 
@@ -31,7 +30,7 @@ bool mouse_middle_pressed(void);
 int mouse_get_scroll(void);
 
 
-void draw_mouse_cursor(volatile struct limine_framebuffer* fb);
+void draw_mouse_cursor(void);
 
 
 bool mouse_data();

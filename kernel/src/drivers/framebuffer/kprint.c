@@ -1,8 +1,9 @@
 #include "kprint.h"
 #include <stdarg.h>
+#include <drivers/gpu/gpu.h>
 #include <interrupt/timer.h>
 #include <arch/x86_64/io.h>
-#include <drivers/framebuffer/colors.h>
+#include <drivers/gpu/graphics.h>
 
 #define COM1_PORT 0x3F8
 
@@ -92,55 +93,35 @@ static int itoa_signed(int64_t num, char* str) {
     return i;
 }
 
-
 void itoa(int num, char* str, int base) {
     int i = 0;
     int isNegative = 0;
-
-    if (num == 0) {
-        str[i++] = '0';
-        str[i] = '\0';
-        return;
-    }
-
-    if (num < 0 && base == 10) {
-        isNegative = 1;
-        num = -num;  
-    }
-
+    if (num == 0) { str[i++] = '0'; str[i] = '\0'; return; }
+    if (num < 0 && base == 10) { isNegative = 1; num = -num; }
     while (num != 0) {
         int rem = num % base;
         str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
         num = num / base;
     }
-
-    if (isNegative) {
-        str[i++] = '-';
-    }
-
-    str[i] = '\0'; 
-    int start = 0;
-    int end = i - 1;
+    if (isNegative) str[i++] = '-';
+    str[i] = '\0';
+    int start = 0, end = i - 1;
     while (start < end) {
         char temp = str[start];
         str[start] = str[end];
         str[end] = temp;
-        start++;
-        end--;
+        start++; end--;
     }
 }
 
-
-
-void init_kprint_global(volatile struct limine_framebuffer* fb, cursor_t* cursor, uint32_t color) {
-    g_printer.fb = fb;
+void init_kprint_global(cursor_t* cursor, uint32_t color) {
     g_printer.cursor = cursor;
     g_printer.color = color;
     g_default_color = color ? color : COLOR_WHITE;
 }
 
 static void kprint_erase_one(void) {
-    if (!g_printer.fb || !g_printer.cursor) return;
+    if (!g_printer.cursor) return;
 
     if (g_printer.cursor->x > 0) {
         g_printer.cursor->x -= g_printer.cursor->char_width;
@@ -152,11 +133,9 @@ static void kprint_erase_one(void) {
         return;
     }
 
-    draw_square_lim(g_printer.fb,
-                    g_printer.cursor->x,
-                    g_printer.cursor->y,
-                    g_printer.cursor->char_width,
-                    COLOR_BLACK);
+    gpu_fill_rect(g_printer.cursor->x, g_printer.cursor->y,
+                  g_printer.cursor->char_width, g_printer.cursor->char_height,
+                  COLOR_BLACK);
 }
 
 static void kprint_clamp_cursor(void) {
@@ -236,7 +215,7 @@ static void ansi_apply_sgr(void) {
 }
 
 static void ansi_handle_csi_final(char final) {
-    if (!g_printer.cursor || !g_printer.fb) return;
+    if (!g_printer.cursor) return;
     int n = ansi_param_or(0, 1);
     switch (final) {
         case 'A':
@@ -262,7 +241,7 @@ static void ansi_handle_csi_final(char final) {
         case 'J': {
             int mode = ansi_param_or(0, 0);
             if (mode == 2 || mode == 0) {
-                clear_screen_lim(g_printer.fb, COLOR_BLACK);
+                gpu_clear_screen(COLOR_BLACK);
                 g_printer.cursor->x = 0;
                 g_printer.cursor->y = 0;
             }
@@ -276,7 +255,7 @@ static void ansi_handle_csi_final(char final) {
                 int w = g_printer.cursor->screen_width - x;
                 int h = g_printer.cursor->char_height;
                 if (w > 0 && h > 0) {
-                    draw_square_lim(g_printer.fb, x, y, w, COLOR_BLACK);
+                    gpu_fill_rect(x, y, w, h, COLOR_BLACK);
                 }
             }
             break;
@@ -299,7 +278,7 @@ static void ansi_handle_csi_final(char final) {
 }
 
 static void kprint_handle_screen_char(char ch) {
-    if (!g_printer.fb || !g_printer.cursor) return;
+    if (!g_printer.cursor) return;
     if (g_ansi_state == 0) {
         if (ch == 0x1B) {
             g_ansi_state = 1;
@@ -318,7 +297,7 @@ static void kprint_handle_screen_char(char ch) {
             kprint_erase_one();
             return;
         }
-        put_char_with_cursor_lim(g_printer.fb, g_printer.cursor, ch, g_printer.color);
+        put_char_with_cursor(g_printer.cursor, ch, g_printer.color);
         return;
     }
     if (g_ansi_state == 1) {
@@ -369,6 +348,9 @@ void kprint(const char* text) {
         }
         ptr++;
     }
+    if (g_screen_enabled) {
+        gpu_flush_all();
+    }
 }
 
 void kprint_set_serial_enabled(int enabled) {
@@ -395,8 +377,8 @@ int kprint_get_user_stdout_serial_only(void) {
     return g_user_stdout_serial_only ? 1 : 0;
 }
 
-void kprintcolor(const char* text,uint32_t color){
-        const char* ptr = text;
+void kprintcolor(const char* text, uint32_t color) {
+    const char* ptr = text;
     while (*ptr) {
         if (g_screen_enabled) {
             if (*ptr == '\n') {
@@ -407,28 +389,31 @@ void kprintcolor(const char* text,uint32_t color){
             } else if (*ptr == '\b' || *ptr == 127) {
                 kprint_erase_one();
             } else {
-                put_char_with_cursor_lim(g_printer.fb, g_printer.cursor, *ptr, color);
+                put_char_with_cursor(g_printer.cursor, *ptr, color);
             }
         }
         ptr++;
     }
+    if (g_screen_enabled) {
+        gpu_flush_all();
+    }
 }
 
 void kprint_int(int num) {
-    char buffer[20]; 
-    itoa(num, buffer, 10); 
-    kprint(buffer); 
+    char buffer[20];
+    itoa(num, buffer, 10);
+    kprint(buffer);
 }
 
 void kprint_uint(uint32_t num) {
-    char buffer[20]; 
-    itoa(num, buffer, 10); 
-    kprint(buffer); 
+    char buffer[20];
+    itoa((int)num, buffer, 10);
+    kprint(buffer);
 }
 
 void kprinthex(uint32_t num) {
     char buffer[20];
-    itoa(num, buffer, 16); 
+    itoa((int)num, buffer, 16);
     kprint("0x");
     kprint(buffer);
 }
@@ -445,28 +430,26 @@ void kprint_hex64(uint64_t num) {
     kprint(buffer);
 }
 
-
 void kprintcolor_int32(int num, uint32_t color) {
     char buffer[20];
-    itoa(num, buffer, 10); 
-    kprintcolor(buffer, color); 
+    itoa(num, buffer, 10);
+    kprintcolor(buffer, color);
 }
 
 void kprintcolor_uint32(uint32_t num, uint32_t color) {
     char buffer[20];
-    itoa(num, buffer, 10); 
-    kprintcolor(buffer, color); 
+    itoa((int)num, buffer, 10);
+    kprintcolor(buffer, color);
 }
-
 
 void kprintcolorhex(uint32_t num, uint32_t color) {
     char buffer[20];
-    itoa(num, buffer, 16); 
-    kprintcolor("0x", color); 
-    kprintcolor(buffer, color); 
+    itoa((int)num, buffer, 16);
+    kprintcolor("0x", color);
+    kprintcolor(buffer, color);
 }
 
-void kprint_ok(const char* text){
+void kprint_ok(const char* text) {
     kprint(text);
     kprint(" ");
     kprint("[");
@@ -474,8 +457,7 @@ void kprint_ok(const char* text){
     kprint("]\n");
 }
 
-
-void kprint_error(const char* text){
+void kprint_error(const char* text) {
     kprint(text);
     kprint(" ");
     kprint("[");
@@ -484,42 +466,19 @@ void kprint_error(const char* text){
 }
 
 static const char* exception_names[] = {
-    "Divide Error",
-    "Debug Exception",
-    "Non-Maskable Interrupt",
-    "Breakpoint",
-    "Overflow",
-    "BOUND Range Exceeded",
-    "Invalid Opcode",
-    "Device Not Available",
-    "Double Fault",
-    "Coprocessor Segment Overrun",
-    "Invalid TSS",
-    "Segment Not Present",
-    "Stack-Segment Fault",
-    "General Protection Fault",
-    "Page Fault",
-    "Reserved",
-    "x87 Floating-Point Exception",
-    "Alignment Check",
-    "Machine Check",
-    "SIMD Floating-Point Exception",
-    "Virtualization Exception",
-    "Reserved",
-    "Reserved",
-    "Reserved",
-    "Reserved",
-    "Reserved",
-    "Reserved",
-    "Reserved",
-    "Reserved",
-    "Reserved",
-    "Security Exception",
-    "Reserved"
+    "Divide Error", "Debug Exception", "Non-Maskable Interrupt", "Breakpoint",
+    "Overflow", "BOUND Range Exceeded", "Invalid Opcode", "Device Not Available",
+    "Double Fault", "Coprocessor Segment Overrun", "Invalid TSS", "Segment Not Present",
+    "Stack-Segment Fault", "General Protection Fault", "Page Fault", "Reserved",
+    "x87 Floating-Point Exception", "Alignment Check", "Machine Check",
+    "SIMD Floating-Point Exception", "Virtualization Exception",
+    "Reserved", "Reserved", "Reserved", "Reserved", "Reserved", "Reserved", "Reserved",
+    "Reserved", "Security Exception", "Reserved"
 };
 
-void trigger_blue_screen(uint64_t interrupt_number, uint64_t error_code){
-    clear_screen_lim(g_printer.fb, COLOR_LIGHT_BLUE_SCREEN_BG);
+void trigger_blue_screen(uint64_t interrupt_number, uint64_t error_code) {
+    gpu_clear_screen(COLOR_LIGHT_BLUE_SCREEN_BG);
+    gpu_flush_all();
     g_printer.cursor->x = 3;
     g_printer.cursor->y = 3;
     kprint("=====================================\n");
@@ -534,37 +493,29 @@ void trigger_blue_screen(uint64_t interrupt_number, uint64_t error_code){
     kprint(" (");
     kprint_uint(interrupt_number);
     kprint(")\n\n");
-    
     kprint("Error Code: ");
     kprint_hex64(error_code);
     kprint("\n\n");
-    
     kprint(":( - Ein kritischer Fehler ist aufgetreten.\n");
     kprint("Das System wurde angehalten.\n\n");
     kprint("Bitte notieren Sie die Exception-Nummer\n");
     kprint("und starten Sie das System neu.\n\n");
-    
     kprintcolor(" System wird in 10 Sekunden neustarten... ", COLOR_RED);
     kprint("\n");
     sleep_s(10);
 }
 
-
 void kprintf(const char* format, ...) {
     va_list args;
     va_start(args, format);
-
     char buffer[64];
-
     while (*format) {
         if (*format != '%') {
             char tmp[2] = {*format++, '\0'};
             kprint(tmp);
             continue;
         }
-
-        format++;  
-
+        format++;
         switch (*format) {
             case 'd':
             case 'i': {
@@ -609,7 +560,7 @@ void kprintf(const char* format, ...) {
                 kprint("%");
                 break;
             case '\0':
-                goto end;  
+                goto end;
             default: {
                 kprint("%");
                 char tmp[2] = {*format, '\0'};
@@ -619,7 +570,6 @@ void kprintf(const char* format, ...) {
         }
         format++;
     }
-
 end:
     va_end(args);
 }

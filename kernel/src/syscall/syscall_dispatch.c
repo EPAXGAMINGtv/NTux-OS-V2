@@ -2,7 +2,10 @@
 #include "syscall_dispatch.h"
 #include "syscall_numbers.h"
 #include <drivers/framebuffer/kprint.h>
-#include <drivers/framebuffer/fb.h>
+#include <limine.h>
+#include <drivers/gpu/graphics.h>
+
+extern volatile struct limine_framebuffer_request framebuffer_request;
 #include <interrupt/timer.h>
 #include <fs/fs.h>
 #include <syscall/linux_syscall.h>
@@ -45,9 +48,8 @@ uint64_t syscall_dispatch(uint64_t* r) {
             return 0;
         }
         case SYSCALL_CLEAR_SCREEN: {
-            if (!framebuffer_request.response || framebuffer_request.response->framebuffer_count < 1) return (uint64_t)-1;
-            volatile struct limine_framebuffer* fb = framebuffer_request.response->framebuffers[0];
-            clear_screen_lim(fb, (uint32_t)rdi);
+            gpu_clear_screen((uint32_t)rdi);
+            gpu_flush_all();
             return 0;
         }
         case SYSCALL_FS_EXISTS: {
