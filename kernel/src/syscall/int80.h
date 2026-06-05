@@ -68,24 +68,6 @@ typedef struct {
 } int80_task_info_t;
 
 typedef struct {
-    char name[32];
-    uint32_t width;
-    uint32_t height;
-    uint32_t bpp;
-    uint32_t fb_size;
-} int80_gpu_info_t;
-
-typedef struct {
-    uint64_t blit_count;
-    uint64_t blit_errors;
-    uint64_t blit_cycles;
-    uint32_t current_memory_usage;
-    uint32_t max_memory_usage;
-    uint32_t memory_allocations;
-    uint64_t ticks;
-} int80_gpu_stats_t;
-
-typedef struct {
     uint8_t present;
     uint8_t is_atapi;
     uint8_t _pad[6];
@@ -177,9 +159,7 @@ enum {
     INT80_GET_CPU_BRAND = 113,
     INT80_DIALOG_POP = 114,
     INT80_DIALOG_PUSH = 115,
-    INT80_MODULE_LIST = 116,
-    INT80_GET_GPU_INFO = 117,
-    INT80_GET_GPU_STATS = 118
+    INT80_MODULE_LIST = 116
 };
 
 typedef struct {

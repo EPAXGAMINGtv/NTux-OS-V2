@@ -16,14 +16,12 @@
 #include <drivers/framebuffer/kprint.h>
 #include <drivers/ps2/keyboard.h>
 #include <drivers/ps2/mouse.h>
-#include <drivers/audio/audio.h>
 #include <drivers/cmos/cmos.h>
 #include <interrupt/apic/apic.h>
 #include <network.h>
 #include <drivers/sata/ata.h>
 #include <drivers/nvme/nvme.h>
 #include <drivers/sdmmc/sdmmc.h>
-#include <drivers/gpu/gpu.h>
 
 #include <sched/thread.h>
 #include <arch/x86_64/cpu.h>
@@ -141,7 +139,6 @@ static void init_storage_and_fs(void) {
     nvme_init();
     //sdmmc_init();
     fs_init();
-    gpu_init();
 
     fs_mkdir("/", "home");
     fs_mkdir("/home", "user");
@@ -158,9 +155,6 @@ static void init_drivers(void) {
     } else {
         kprint_error("PS/2 mouse initialization failed");
     }
-
-    beep(440, 4);
-    kprint_ok("Audio initialized");
 
     if (network_init() == 0) {
         kprint_ok("NIC initialized");

@@ -80,8 +80,7 @@ static const char* deskapi_icon_for_title(const char* title) {
     if (deskapi_text_contains_ci(title, "epaxfetch")) return "/boot/res/icons/epaxfetch.bmp";
     if (deskapi_text_contains_ci(title, "cpphello")) return "/boot/res/icons/cpphello.bmp";
     if (deskapi_text_contains_ci(title, "hello")) return "/boot/res/icons/hello.bmp";
-    if (deskapi_text_contains_ci(title, "gpu") || deskapi_text_contains_ci(title, "3d")) return "/boot/res/icons/gpu3d_demo.bmp";
-    if (deskapi_text_contains_ci(title, "gltest") || deskapi_text_contains_ci(title, "opengl")) return "/boot/res/icons/gltest.bmp";
+
     if (deskapi_text_contains_ci(title, "vim")) return "/boot/res/icons/vim.bmp";
     if (deskapi_text_contains_ci(title, "lua")) return "/boot/res/icons/lua.bmp";
     if (deskapi_text_contains_ci(title, "tcc") || deskapi_text_contains_ci(title, "tinycc")) return "/boot/res/icons/tcc.bmp";

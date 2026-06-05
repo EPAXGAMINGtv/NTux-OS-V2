@@ -39,7 +39,6 @@ BASE_XEYES := 0x3E000000
 BASE_SETTINGS := 0x41000000
 BASE_PARTUTIL := 0x44000000
 BASE_TEST := 0x47000000
-BASE_GLTEST := 0x4A000000
 BASE_SNAKE := 0x4D000000
 BASE_HEALTHCHECK := 0x50000000
 BASE_TCC := 0x53000000
@@ -47,7 +46,6 @@ BASE_BROWSER := 0x56000000
 BASE_PAINT := 0x59000000
 BASE_SCREENSAVER := 0x5C000000
 BASE_CALC := 0x5F000000
-BASE_SNAKE2 := 0x62000000
 
 LDFLAGS_DESKTOP := $(LDFLAGS) --defsym=USER_BASE=$(BASE_DESKTOP)
 LDFLAGS_HELLO := $(LDFLAGS) --defsym=USER_BASE=$(BASE_HELLO)
@@ -74,7 +72,6 @@ LDFLAGS_XEYES := $(LDFLAGS) --defsym=USER_BASE=$(BASE_XEYES)
 LDFLAGS_SETTINGS := $(LDFLAGS) --defsym=USER_BASE=$(BASE_SETTINGS)
 LDFLAGS_PARTUTIL := $(LDFLAGS) --defsym=USER_BASE=$(BASE_PARTUTIL)
 LDFLAGS_TEST := $(LDFLAGS) --defsym=USER_BASE=$(BASE_TEST)
-LDFLAGS_GLTEST := $(LDFLAGS) --defsym=USER_BASE=$(BASE_GLTEST)
 LDFLAGS_SNAKE := $(LDFLAGS) --defsym=USER_BASE=$(BASE_SNAKE)
 LDFLAGS_HEALTHCHECK := $(LDFLAGS) --defsym=USER_BASE=$(BASE_HEALTHCHECK)
 LDFLAGS_TCC := $(LDFLAGS) --defsym=USER_BASE=$(BASE_TCC)
@@ -82,7 +79,6 @@ LDFLAGS_BROWSER := $(LDFLAGS) --defsym=USER_BASE=$(BASE_BROWSER)
 LDFLAGS_PAINT := $(LDFLAGS) --defsym=USER_BASE=$(BASE_PAINT)
 LDFLAGS_SCREENSAVER := $(LDFLAGS) --defsym=USER_BASE=$(BASE_SCREENSAVER)
 LDFLAGS_CALC := $(LDFLAGS) --defsym=USER_BASE=$(BASE_CALC)
-LDFLAGS_SNAKE2 := $(LDFLAGS) --defsym=USER_BASE=$(BASE_SNAKE2)
 
 OUT_DIR := bin
 OBJ_DIR := obj
@@ -117,9 +113,7 @@ XEYES_SRC := src/xeyes/xeyes.c
 SETTINGS_SRC := src/settings/settings_main.c src/settings/settings_ui.c src/settings/settings_store.c src/settings/settings_data.c
 PARTUTIL_SRC := src/partutil/partutil_main.c src/partutil/partutil_ui.c src/partutil/partutil_ops.c
 TEST_SRC := src/test/test.c
-GLTEST_SRC := src/gltest/gltest.c
 SNAKE_SRC := src/snake/snake.c
-SNAKE2_SRC := src/snake2/snake2.c
 HEALTHCHECK_SRC := src/healthcheck/healthcheck.c
 LUA_APP_SRC := src/lua/lua_desk.c
 TCC_SRC := src/tinycc/tcc_desk.c
@@ -271,9 +265,7 @@ XEYES_ALL_SRC := $(RUNTIME_SRC) $(XEYES_SRC)
 SETTINGS_ALL_SRC := $(RUNTIME_SRC) $(SETTINGS_SRC)
 PARTUTIL_ALL_SRC := $(RUNTIME_SRC) $(PARTUTIL_SRC)
 TEST_ALL_SRC := $(RUNTIME_SRC) $(TEST_SRC)
-GLTEST_ALL_SRC := $(RUNTIME_SRC) $(GLTEST_SRC)
 SNAKE_ALL_SRC := $(RUNTIME_SRC) $(SNAKE_SRC)
-SNAKE2_ALL_SRC := $(RUNTIME_SRC) $(SNAKE2_SRC)
 HEALTHCHECK_ALL_SRC := $(RUNTIME_SRC) $(HEALTHCHECK_SRC)
 LUA_ALL_SRC := $(RUNTIME_SRC) $(LUA_CORE_SRC) $(LUA_LIB_SRC) $(LUA_APP_SRC)
 TCC_ALL_SRC := $(RUNTIME_SRC) $(TCC_SRC)
@@ -306,9 +298,7 @@ XEYES_OBJ := $(patsubst %.c,$(OBJ_DIR)/xeyes/%.o,$(filter %.c,$(XEYES_ALL_SRC)))
 SETTINGS_OBJ := $(patsubst %.c,$(OBJ_DIR)/settings/%.o,$(filter %.c,$(SETTINGS_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/settings/%.o,$(filter %.cpp,$(SETTINGS_ALL_SRC)))
 PARTUTIL_OBJ := $(patsubst %.c,$(OBJ_DIR)/partutil/%.o,$(filter %.c,$(PARTUTIL_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/partutil/%.o,$(filter %.cpp,$(PARTUTIL_ALL_SRC)))
 TEST_OBJ := $(patsubst %.c,$(OBJ_DIR)/test/%.o,$(filter %.c,$(TEST_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/test/%.o,$(filter %.cpp,$(TEST_ALL_SRC)))
-GLTEST_OBJ := $(patsubst %.c,$(OBJ_DIR)/gltest/%.o,$(filter %.c,$(GLTEST_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/gltest/%.o,$(filter %.cpp,$(GLTEST_ALL_SRC)))
 SNAKE_OBJ := $(patsubst %.c,$(OBJ_DIR)/snake/%.o,$(filter %.c,$(SNAKE_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/snake/%.o,$(filter %.cpp,$(SNAKE_ALL_SRC)))
-SNAKE2_OBJ := $(patsubst %.c,$(OBJ_DIR)/snake2/%.o,$(filter %.c,$(SNAKE2_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/snake2/%.o,$(filter %.cpp,$(SNAKE2_ALL_SRC)))
 HEALTHCHECK_OBJ := $(patsubst %.c,$(OBJ_DIR)/healthcheck/%.o,$(filter %.c,$(HEALTHCHECK_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/healthcheck/%.o,$(filter %.cpp,$(HEALTHCHECK_ALL_SRC)))
 LUA_OBJ := $(patsubst %.c,$(OBJ_DIR)/lua/%.o,$(filter %.c,$(LUA_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/lua/%.o,$(filter %.cpp,$(LUA_ALL_SRC)))
 TCC_OBJ := $(patsubst %.c,$(OBJ_DIR)/tcc/%.o,$(filter %.c,$(TCC_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/tcc/%.o,$(filter %.cpp,$(TCC_ALL_SRC)))
@@ -332,7 +322,7 @@ TCC_INCLUDE_STAMP := $(TCC_INC_DIR)/.stamp
 
 .PHONY: all clean
 
-ALL_TARGETS := $(OUT_DIR)/hello.elf $(OUT_DIR)/konsole.elf $(OUT_DIR)/hellokonsole.elf $(OUT_DIR)/installer.elf $(OUT_DIR)/installer_term.elf $(OUT_DIR)/desktop.elf $(OUT_DIR)/terminal.elf $(OUT_DIR)/deskdemo.elf $(OUT_DIR)/screensaver.elf $(OUT_DIR)/login.elf $(OUT_DIR)/doom.elf $(OUT_DIR)/epaxfetch.elf $(OUT_DIR)/tetris.elf $(OUT_DIR)/taskmgr.elf $(OUT_DIR)/deskconsole.elf $(OUT_DIR)/explorer.elf $(OUT_DIR)/editor.elf $(OUT_DIR)/bench.elf $(OUT_DIR)/imgview.elf $(OUT_DIR)/objview.elf $(OUT_DIR)/flappy.elf $(OUT_DIR)/xeyes.elf $(OUT_DIR)/settings.elf $(OUT_DIR)/partutil.elf $(OUT_DIR)/test.elf $(OUT_DIR)/gltest.elf $(OUT_DIR)/snake.elf $(OUT_DIR)/snake2.elf $(OUT_DIR)/healthcheck.elf $(OUT_DIR)/lua.elf $(OUT_DIR)/tcc.elf $(OUT_DIR)/browser.elf $(OUT_DIR)/paint.elf $(OUT_DIR)/calc.elf $(TCC_LIBC_A) $(TCC_LIBTCC1_A) $(TCC_CRT1_OBJ) $(TCC_CRTI_OBJ) $(TCC_CRTN_OBJ) $(TCC_INCLUDE_STAMP)
+ALL_TARGETS := $(OUT_DIR)/hello.elf $(OUT_DIR)/konsole.elf $(OUT_DIR)/hellokonsole.elf $(OUT_DIR)/installer.elf $(OUT_DIR)/installer_term.elf $(OUT_DIR)/desktop.elf $(OUT_DIR)/terminal.elf $(OUT_DIR)/deskdemo.elf $(OUT_DIR)/screensaver.elf $(OUT_DIR)/login.elf $(OUT_DIR)/doom.elf $(OUT_DIR)/epaxfetch.elf $(OUT_DIR)/tetris.elf $(OUT_DIR)/taskmgr.elf $(OUT_DIR)/deskconsole.elf $(OUT_DIR)/explorer.elf $(OUT_DIR)/editor.elf $(OUT_DIR)/bench.elf $(OUT_DIR)/imgview.elf $(OUT_DIR)/objview.elf $(OUT_DIR)/flappy.elf $(OUT_DIR)/xeyes.elf $(OUT_DIR)/settings.elf $(OUT_DIR)/partutil.elf $(OUT_DIR)/test.elf $(OUT_DIR)/snake.elf $(OUT_DIR)/healthcheck.elf $(OUT_DIR)/lua.elf $(OUT_DIR)/tcc.elf $(OUT_DIR)/browser.elf $(OUT_DIR)/paint.elf $(OUT_DIR)/calc.elf $(TCC_LIBC_A) $(TCC_LIBTCC1_A) $(TCC_CRT1_OBJ) $(TCC_CRTI_OBJ) $(TCC_CRTN_OBJ) $(TCC_INCLUDE_STAMP)
 ifeq ($(HAS_CXX),1)
 ALL_TARGETS += $(OUT_DIR)/cpphello.elf
 endif
@@ -443,17 +433,9 @@ $(OUT_DIR)/test.elf: $(TEST_OBJ) linker.ld
 	@mkdir -p $(OUT_DIR)
 	$(LD) $(LDFLAGS_TEST) $(TEST_OBJ) -o $@
 
-$(OUT_DIR)/gltest.elf: $(GLTEST_OBJ) linker.ld
-	@mkdir -p $(OUT_DIR)
-	$(LD) $(LDFLAGS_GLTEST) $(GLTEST_OBJ) -o $@
-
 $(OUT_DIR)/snake.elf: $(SNAKE_OBJ) linker.ld
 	@mkdir -p $(OUT_DIR)
 	$(LD) $(LDFLAGS_SNAKE) $(SNAKE_OBJ) -o $@
-
-$(OUT_DIR)/snake2.elf: $(SNAKE2_OBJ) linker.ld
-	@mkdir -p $(OUT_DIR)
-	$(LD) $(LDFLAGS_SNAKE2) $(SNAKE2_OBJ) -o $@
 
 $(OUT_DIR)/healthcheck.elf: $(HEALTHCHECK_OBJ) linker.ld
 	@mkdir -p $(OUT_DIR)
@@ -557,15 +539,7 @@ $(OBJ_DIR)/test/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
-$(OBJ_DIR)/gltest/%.o: %.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
-
 $(OBJ_DIR)/snake/%.o: %.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
-
-$(OBJ_DIR)/snake2/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
@@ -729,10 +703,6 @@ $(OBJ_DIR)/cpphello/%.o: %.cpp
 $(OBJ_DIR)/gltest/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
-
-$(OBJ_DIR)/gltest/%.o: %.cpp
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
 
 $(OBJ_DIR)/installer/src/installer/installer.o: src/installer/installer.c
 	@mkdir -p $(dir $@)

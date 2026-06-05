@@ -4,8 +4,6 @@
 #include <sched/thread.h>
 #include <drivers/framebuffer/fb.h>
 #include <drivers/framebuffer/kprint.h>
-#include <drivers/gpu/gpu.h>
-#include <drivers/gpu/gpu_ioctl.h>
 #include <drivers/input/input.h>
 #include <drivers/input/console_input.h>
 #include <drivers/ps2/keyboard.h>
@@ -20,7 +18,6 @@
 #include <interrupt/timer.h>
 #include <arch/x86_64/io.h>
 
-static uint64_t g_gpu_blit_count = 0;
 #include <lib/info.h>
 #include <mm/kmalloc.h>
 #include <mm/pmm.h>
@@ -440,56 +437,6 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (uint64_t)module_loader_list(out, max_entries, out_count_ptr);
             return 0;
         }
-        case INT80_GET_GPU_INFO: {
-            int80_gpu_info_t* out = (int80_gpu_info_t*)(uintptr_t)regs->rdi;
-            if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
-                regs->rax = (uint64_t)-1;
-                return 0;
-            }
-            const gpu_device_t* gpu = gpu_get_primary();
-            memset(out, 0, sizeof(*out));
-            if (gpu && gpu->name) {
-                strncpy(out->name, gpu->name, sizeof(out->name) - 1);
-                out->name[sizeof(out->name) - 1] = '\0';
-                out->width = gpu->info.width;
-                out->height = gpu->info.height;
-                out->bpp = gpu->info.bpp;
-                out->fb_size = (uint32_t)gpu->info.fb_size;
-            } else {
-                strncpy(out->name, "bootfb", sizeof(out->name) - 1);
-                out->name[sizeof(out->name) - 1] = '\0';
-                if (framebuffer_request.response && framebuffer_request.response->framebuffer_count > 0) {
-                    volatile struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
-                    out->width = (uint32_t)fb->width;
-                    out->height = (uint32_t)fb->height;
-                    out->bpp = (uint32_t)fb->bpp;
-                    out->fb_size = (uint32_t)(fb->pitch * fb->height);
-                }
-            }
-            regs->rax = 0;
-            return 0;
-        }
-        case INT80_GET_GPU_STATS: {
-            int80_gpu_stats_t* out = (int80_gpu_stats_t*)(uintptr_t)regs->rdi;
-            if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
-                regs->rax = (uint64_t)-1;
-                return 0;
-            }
-            memset(out, 0, sizeof(*out));
-            const gpu_device_t* gpu = gpu_get_primary();
-            if (gpu) {
-                gpu_stats_t stats = gpu_get_stats(gpu);
-                out->blit_count = stats.blit_count;
-                out->blit_errors = stats.blit_errors;
-                out->blit_cycles = stats.blit_cycles;
-                out->current_memory_usage = stats.current_memory_usage;
-                out->max_memory_usage = stats.max_memory_usage;
-                out->memory_allocations = stats.memory_allocations;
-            }
-            out->ticks = get_tick_count();
-            regs->rax = 0;
-            return 0;
-        }
         case INT80_SET_UID: {
             regs->rax = (uint64_t)thread_set_current_uid((uint32_t)regs->rdi);
             return 0;
@@ -691,20 +638,12 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 regs->rax = (uint64_t)-1;
                 return 0;
             }
-            const gpu_device_t* gpu = gpu_get_primary();
-            if (gpu) {
-                out->width = gpu->info.width;
-                out->height = gpu->info.height;
-                out->pitch = gpu->info.pitch;
-                out->bpp = gpu->info.bpp;
-            } else {
-                out->width = 0;
-                out->height = 0;
-                out->pitch = 0;
-                out->bpp = 0;
-            }
             if (framebuffer_request.response && framebuffer_request.response->framebuffer_count > 0) {
                 volatile struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
+                out->width = (uint32_t)fb->width;
+                out->height = (uint32_t)fb->height;
+                out->pitch = (uint32_t)fb->pitch;
+                out->bpp = (uint32_t)fb->bpp;
                 out->memory_model = fb->memory_model;
                 out->red_mask_size = fb->red_mask_size;
                 out->red_mask_shift = fb->red_mask_shift;
@@ -713,6 +652,10 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 out->blue_mask_size = fb->blue_mask_size;
                 out->blue_mask_shift = fb->blue_mask_shift;
             } else {
+                out->width = 0;
+                out->height = 0;
+                out->pitch = 0;
+                out->bpp = 0;
                 out->memory_model = 0;
                 out->red_mask_size = 0;
                 out->red_mask_shift = 0;
@@ -726,7 +669,6 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             return 0;
         }
         case INT80_FB_BLIT32: {
-            static int g_disable_gpu_blit = 1;
             const uint32_t* src = (const uint32_t*)(uintptr_t)regs->rdi;
             uint32_t src_w = (uint32_t)regs->rsi;
             uint32_t src_h = (uint32_t)regs->rdx;
@@ -750,23 +692,6 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                     return 0;
                 }
             }
-            const gpu_device_t* gpu = gpu_get_primary();
-            if (!g_disable_gpu_blit && gpu && gpu->ops && gpu->ops->ioctl) {
-                ntux_gpu_blit32_t req = {
-                    .src = src,
-                    .width = src_w,
-                    .height = src_h,
-                    .pitch = src_pitch
-                };
-                int rc = gpu->ops->ioctl((struct gpu_device*)gpu, NTUX_GPU_IOCTL_BLIT32, &req);
-                if (rc == 0) {
-                    g_gpu_blit_count++;
-                    regs->rax = 0;
-                    return 0;
-                }
-                // GPU path failed - fall back to boot framebuffer.
-            }
-
             if (!framebuffer_request.response || framebuffer_request.response->framebuffer_count < 1) {
                 regs->rax = (uint64_t)-1;
                 return 0;
@@ -819,7 +744,6 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                     }
                 }
             }
-            g_gpu_blit_count++;
             regs->rax = 0;
             return 0;
         }

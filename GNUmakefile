@@ -19,8 +19,6 @@ QEMUFLAGS := \
     -device virtio-rng-pci \
     -netdev user,id=net0 \
     -device e1000,netdev=net0 \
-    -device ich9-intel-hda \
-    -device hda-duplex \
     -drive if=none,id=sdcard,file=disk.img,format=raw,cache=none,aio=native \
     -device sd-card,drive=sdcard
 override IMAGE_NAME := NTux-OS-$(ARCH)
@@ -195,7 +193,6 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 	cp -v userspace/bin/bench.elf iso_root/boot/modules/bench.elf
 	cp -v userspace/bin/imgview.elf iso_root/boot/modules/imgview.elf
 	cp -v userspace/bin/objview.elf iso_root/boot/modules/objview.elf
-	cp -v userspace/bin/gltest.elf iso_root/boot/modules/gltest.elf
 	cp -v userspace/bin/flappy.elf iso_root/boot/modules/flappy.elf
 	cp -v userspace/bin/xeyes.elf iso_root/boot/modules/xeyes.elf
 	cp -v userspace/bin/settings.elf iso_root/boot/modules/settings.elf
@@ -206,7 +203,6 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 	cp -v userspace/bin/paint.elf iso_root/boot/modules/paint.elf
 	cp -v userspace/bin/calc.elf iso_root/boot/modules/calc.elf
 	cp -v userspace/bin/snake.elf iso_root/boot/modules/snake.elf
-	cp -v userspace/bin/snake2.elf iso_root/boot/modules/snake2.elf
 	cp -v userspace/bin/lua.elf iso_root/boot/modules/lua.elf
 	cp -v userspace/bin/tcc.elf iso_root/boot/modules/tcc.elf
 	cp -v userspace/src/tinycc/examples/ex1.c iso_root/boot/modules/tcc_example.c
@@ -313,7 +309,6 @@ endif
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/healthcheck.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/paint.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/calc.elf ::/boot/modules
-	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/snake2.elf ::/boot/modules
 	@if [ -d res/icons ]; then mcopy -i $(IMAGE_NAME).hdd@@1M -s res/icons ::/boot/res/icons; else echo "skip: res/icons (missing)"; fi
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/flappy.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/xeyes.elf ::/boot/modules
@@ -401,7 +396,6 @@ create-drives: userspace
 	mcopy -i drive_fat32.img userspace/bin/healthcheck.elf ::/boot/modules/healthcheck.elf
 	mcopy -i drive_fat32.img userspace/bin/paint.elf ::/boot/modules/paint.elf
 	mcopy -i drive_fat32.img userspace/bin/calc.elf ::/boot/modules/calc.elf
-	mcopy -i drive_fat32.img userspace/bin/snake2.elf ::/boot/modules/snake2.elf
 	@if [ -d res/icons ]; then mcopy -i drive_fat32.img -s res/icons ::/boot/res/icons; else echo "skip: res/icons (missing)"; fi
 	mcopy -i drive_fat32.img userspace/bin/flappy.elf ::/boot/modules/flappy.elf
 	mcopy -i drive_fat32.img userspace/bin/xeyes.elf ::/boot/modules/xeyes.elf

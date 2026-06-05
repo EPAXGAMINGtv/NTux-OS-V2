@@ -4644,7 +4644,6 @@ static int app_icon_path_for_exec(const char* exec_path, char* out, size_t cap) 
         if (strcmp(token, "konsole") == 0 || strcmp(token, "deskconsole") == 0) return (int)(strncpy(out, "/boot/res/icons/terminal.bmp", cap - 1), out[cap - 1] = '\0', 0);
         if (strcmp(token, "healthcheck") == 0) return (int)(strncpy(out, "/boot/res/icons/healthcheck.bmp", cap - 1), out[cap - 1] = '\0', 0);
         if (strcmp(token, "desktop") == 0) return (int)(strncpy(out, "/boot/res/icons/desktop.bmp", cap - 1), out[cap - 1] = '\0', 0);
-        if (strcmp(token, "snake2") == 0) return (int)(strncpy(out, "/boot/res/icons/snake.bmp", cap - 1), out[cap - 1] = '\0', 0);
         char buf[96];
         buf[0] = '\0';
         (void)str_append(buf, sizeof(buf), "/boot/res/icons/");
@@ -4675,11 +4674,6 @@ static int app_icon_path_for_exec(const char* exec_path, char* out, size_t cap) 
         }
         if (strcmp(name, "healthcheck") == 0) {
             strncpy(out, "/boot/res/icons/healthcheck.bmp", cap - 1);
-            out[cap - 1] = '\0';
-            return 0;
-        }
-        if (strcmp(name, "snake2") == 0) {
-            strncpy(out, "/boot/res/icons/snake.bmp", cap - 1);
             out[cap - 1] = '\0';
             return 0;
         }
