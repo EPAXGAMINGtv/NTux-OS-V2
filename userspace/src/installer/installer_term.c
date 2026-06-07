@@ -508,7 +508,7 @@ static __attribute__((noinline)) int detect_source(char source_out[INS_PATH_MAX]
     }
     if (!have_source) {
         uint64_t n = 0;
-        if (sys_fs_list_dir("/media", g_dirents, INS_LS_MAX, &n) == 0) {
+        if (sys_fs_list_dir("/mnt", g_dirents, INS_LS_MAX, &n) == 0) {
             if (n > INS_LS_MAX) n = INS_LS_MAX;
             for (uint64_t i = 0; i < n; ++i) {
                 if (!g_dirents[i].is_dir) continue;
@@ -516,7 +516,7 @@ static __attribute__((noinline)) int detect_source(char source_out[INS_PATH_MAX]
                 char probe_path[INS_PATH_MAX];
                 ntux_dirent_t probe[1];
                 uint64_t pn = 0;
-                if (make_child_path("/media", g_dirents[i].name, cand) != 0) continue;
+                if (make_child_path("/mnt", g_dirents[i].name, cand) != 0) continue;
                 if (make_child_path(cand, "boot/limine", probe_path) == 0 &&
                     sys_fs_list_dir(probe_path, probe, 1, &pn) == 0) {
                     strncpy(source_out, cand, INS_PATH_MAX - 1);
@@ -567,7 +567,7 @@ static int find_mount_for_drive_part(uint64_t drive, uint64_t part, char out[INS
     uint64_t count = 0;
     char media_root[INS_PATH_MAX];
     char letter = (char)('a' + (drive % 26u));
-    int rc = snprintf(media_root, sizeof(media_root), "/media/sd%c%llu", letter, (unsigned long long)part);
+    int rc = snprintf(media_root, sizeof(media_root), "/mnt/sd%c%llu", letter, (unsigned long long)part);
     if (rc > 0 && (size_t)rc < sizeof(media_root)) {
         ntux_dirent_t probe[1];
         if (sys_fs_list_dir(media_root, probe, 1, &count) == 0) {
@@ -576,7 +576,7 @@ static int find_mount_for_drive_part(uint64_t drive, uint64_t part, char out[INS
             return 0;
         }
     }
-    rc = sys_fs_list_dir("/media", g_dirents, INS_LS_MAX, &count);
+    rc = sys_fs_list_dir("/mnt", g_dirents, INS_LS_MAX, &count);
     if (rc != 0) return -1;
     if (count > INS_LS_MAX) count = INS_LS_MAX;
     for (uint64_t i = 0; i < count; ++i) {
@@ -585,7 +585,7 @@ static int find_mount_for_drive_part(uint64_t drive, uint64_t part, char out[INS
         uint64_t p = 0;
         if (parse_drive_part_name(g_dirents[i].name, &d, &p) == 0) {
             if (d == drive && p == part) {
-                return make_child_path("/media", g_dirents[i].name, out);
+                return make_child_path("/mnt", g_dirents[i].name, out);
             }
         }
     }

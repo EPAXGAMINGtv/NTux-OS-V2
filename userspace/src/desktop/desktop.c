@@ -1538,7 +1538,7 @@ static int desk_inst_find_root_for_drive_part(uint64_t drive, uint64_t part, cha
     ntux_dirent_t one[1];
     uint64_t n = 0;
     char letter = (char)('a' + (drive % 26u));
-    int rc = snprintf(probe, sizeof(probe), "/media/sd%c%llu", letter, (unsigned long long)part);
+    int rc = snprintf(probe, sizeof(probe), "/mnt/sd%c%llu", letter, (unsigned long long)part);
     if (rc > 0 && (size_t)rc < sizeof(probe) && sys_fs_list_dir(probe, one, 1, &n) == 0) {
         strncpy(out, probe, DESK_INST_PATH_MAX - 1);
         out[DESK_INST_PATH_MAX - 1] = '\0';
@@ -2763,7 +2763,7 @@ static long desktop_launch_by_basename_tid(const char* base) {
     for (int d = 0; d < 8; ++d) {
         char media_root[32];
         media_root[0] = '\0';
-        if (str_append(media_root, sizeof(media_root), "/media/sd") != 0) continue;
+        if (str_append(media_root, sizeof(media_root), "/mnt/sd") != 0) continue;
         if (str_append_char(media_root, sizeof(media_root), (char)('a' + d)) != 0) continue;
         for (int p = 1; p <= 8; ++p) {
             char part_root[40];
@@ -5194,7 +5194,7 @@ static void seed_filesystem_elf_icons(void) {
     scan_elfs_dir_flat("/apps");
     scan_elfs_dir_flat("/usr/bin");
     scan_elfs_dir_flat("/boot/res/modules");
-    scan_elfs_recursive("/media", 0);
+    scan_elfs_recursive("/mnt", 0);
     scan_elfs_recursive("/", 0);
     /* Desktop behaves like a real desktop folder. */
     scan_desktop_dir_icons();
@@ -8855,7 +8855,7 @@ static void wallpaper_scan_all(void) {
     for (int i = 0; i < DESK_LS_MAX; ++i) g_wallpaper_paths[i][0] = '\0';
     wallpaper_thumbs_clear();
     wallpaper_scan_dir("/boot", 0);
-    wallpaper_scan_dir("/media", 0);
+    wallpaper_scan_dir("/mnt", 0);
     wallpaper_scan_dir("/cd", 0);
     wallpaper_scan_dir("/cdrom", 0);
     wallpaper_scan_dir("/iso", 0);

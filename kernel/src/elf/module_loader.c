@@ -1204,6 +1204,33 @@ int module_loader_list(ntux_module_info_t* out, uint64_t max_entries, uint64_t* 
     return 0;
 }
 
+void module_loader_populate_bin(void) {
+    if (!g_modules_ready || !g_module_response || !g_module_response->modules) {
+        kprint("[MOD] populate /bin: no modules\n");
+        return;
+    }
+    int count = 0;
+    for (uint64_t i = 0; i < g_module_response->module_count; ++i) {
+        struct limine_file *f = g_module_response->modules[i];
+        if (!f || !f->address || f->size == 0 || !f->path) continue;
+        size_t plen = strlen(f->path);
+        if (plen < 4 || strcmp(f->path + plen - 4, ".elf") != 0) continue;
+        const char *base = f->path;
+        for (const char *p = f->path; *p; ++p) {
+            if (*p == '/') base = p + 1;
+        }
+        char name[64];
+        size_t nlen = strlen(base);
+        if (nlen >= sizeof(name)) nlen = sizeof(name) - 1;
+        memcpy(name, base, nlen);
+        name[nlen] = '\0';
+        if (fs_create_file("/bin", name, f->address, f->size) == 0) count++;
+    }
+    kprint("[MOD] populated /bin with ");
+    kprint_uint((uint32_t)count);
+    kprint(" modules\n");
+}
+
 int module_loader_last_hello_tid(void) {
     return last_hello_launch_tid();
 }

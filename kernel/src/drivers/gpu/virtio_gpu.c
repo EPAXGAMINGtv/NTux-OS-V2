@@ -288,18 +288,19 @@ static int virtio_gpu_send_command(const void* cmd, uint32_t cmd_len, void* resp
         __asm__ __volatile__("pause");
     }
 
-    uint16_t head = ctrl_vq.last_avail_idx % (ctrl_vq.q_size - 2);
+    uint16_t head = ctrl_vq.last_avail_idx % ctrl_vq.q_size;
+    uint16_t next = (head + 1) % ctrl_vq.q_size;
 
     memcpy(cmd_buffer, cmd, cmd_len);
     ctrl_vq.desc[head].addr = v2p((uint64_t)(uintptr_t)cmd_buffer);
     ctrl_vq.desc[head].len = cmd_len;
     ctrl_vq.desc[head].flags = VRING_DESC_F_NEXT;
-    ctrl_vq.desc[head].next = head + 1;
+    ctrl_vq.desc[head].next = next;
 
     memset(resp_buffer, 0, resp_len);
-    ctrl_vq.desc[head + 1].addr = v2p((uint64_t)(uintptr_t)resp_buffer);
-    ctrl_vq.desc[head + 1].len = resp_len;
-    ctrl_vq.desc[head + 1].flags = VRING_DESC_F_WRITE;
+    ctrl_vq.desc[next].addr = v2p((uint64_t)(uintptr_t)resp_buffer);
+    ctrl_vq.desc[next].len = resp_len;
+    ctrl_vq.desc[next].flags = VRING_DESC_F_WRITE;
 
     ctrl_vq.avail->ring[ctrl_vq.avail->idx % ctrl_vq.q_size] = head;
     __asm__ __volatile__("mfence");

@@ -304,10 +304,8 @@ static void fs_build_linux_mount(char out[32], uint8_t drive, uint8_t part_no) {
     size_t p = 0;
     out[p++] = '/';
     out[p++] = 'm';
-    out[p++] = 'e';
-    out[p++] = 'd';
-    out[p++] = 'i';
-    out[p++] = 'a';
+    out[p++] = 'n';
+    out[p++] = 't';
     out[p++] = '/';
     out[p++] = 's';
     out[p++] = 'd';
@@ -327,7 +325,7 @@ static int fs_root_score_from_kind(fs_kind_t kind) {
 
 static void fs_ensure_linux_dirs(void) {
     const char* dirs[] = {
-        "/dev", "/media", "/boot", "/home", "/etc", "/bin", "/sbin", "/usr", "/var", "/tmp"
+        "/dev", "/mnt", "/boot", "/home", "/etc", "/bin", "/sbin", "/usr", "/var", "/tmp"
     };
     for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); ++i) {
         (void)vfs_mkdir(dirs[i]);

@@ -18,5 +18,6 @@ int module_loader_last_hello_tid(void);
 int module_loader_last_elf_tid(void);
 void module_loader_free_user_space(uint64_t pml4_phys, uint64_t start, uint64_t end);
 int module_loader_list(ntux_module_info_t* out, uint64_t max_entries, uint64_t* out_count);
+void module_loader_populate_bin(void);
 
 #endif

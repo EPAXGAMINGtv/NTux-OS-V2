@@ -164,6 +164,16 @@ userspace:
 
 $(IMAGE_NAME).iso: limine/limine kernel userspace
 	rm -rf iso_root
+	mkdir -p iso_root/bin
+	mkdir -p iso_root/dev
+	mkdir -p iso_root/etc
+	mkdir -p iso_root/home
+	mkdir -p iso_root/lib
+	mkdir -p iso_root/mnt
+	mkdir -p iso_root/sbin
+	mkdir -p iso_root/tmp
+	mkdir -p iso_root/usr
+	mkdir -p iso_root/var
 	mkdir -p iso_root/boot
 	mkdir -p iso_root/boot/recovery
 	mkdir -p iso_root/boot/modules
@@ -284,7 +294,7 @@ else
 	PATH=$$PATH:/usr/sbin:/sbin sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00
 endif
 	mformat -i $(IMAGE_NAME).hdd@@1M
-	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine ::/boot/modules ::/boot/tcc ::/boot/res ::/boot/res/modules
+	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/bin ::/dev ::/etc ::/home ::/lib ::/mnt ::/sbin ::/tmp ::/usr ::/var ::/boot ::/boot/limine ::/boot/modules ::/boot/tcc ::/boot/res ::/boot/res/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M kernel/bin-$(ARCH)/kernel ::/boot
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/hello.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/konsole.elf ::/boot/modules
