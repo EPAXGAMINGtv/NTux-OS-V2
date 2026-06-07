@@ -325,7 +325,7 @@ static int fs_root_score_from_kind(fs_kind_t kind) {
 
 static void fs_ensure_linux_dirs(void) {
     const char* dirs[] = {
-        "/dev", "/mnt", "/boot", "/home", "/etc", "/bin", "/sbin", "/usr", "/var", "/tmp"
+        "/bin"
     };
     for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); ++i) {
         (void)vfs_mkdir(dirs[i]);
