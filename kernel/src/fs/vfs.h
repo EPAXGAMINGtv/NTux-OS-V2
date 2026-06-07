@@ -45,5 +45,6 @@ int vfs_exists(const char* path);
 int vfs_remove(const char* path);
 int vfs_rename(const char* old_path, const char* new_path);
 int vfs_get_mount(const char* path, const vfs_backend_ops_t** out_ops, void** out_ctx, const char** out_relative);
+void vfs_dump_mounts(void);
 
 #endif

@@ -1,6 +1,7 @@
 #include <fs/vfs.h>
 
 #include <lib/string.h>
+#include <drivers/framebuffer/kprint.h>
 
 static vfs_mount_t g_mounts[VFS_MAX_MOUNTS];
 
@@ -280,4 +281,15 @@ int vfs_get_mount(const char* path, const vfs_backend_ops_t** out_ops, void** ou
     if (out_ctx) *out_ctx = m->ctx;
     if (out_relative) *out_relative = rel;
     return 0;
+}
+
+void vfs_dump_mounts(void) {
+    for (size_t i = 0; i < VFS_MAX_MOUNTS; ++i) {
+        if (!g_mounts[i].used) continue;
+        kprintf("  mount[");
+        kprint_int((int)i);
+        kprintf("] \"");
+        kprint(g_mounts[i].mount_point);
+        kprintf("\"\n");
+    }
 }

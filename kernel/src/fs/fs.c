@@ -300,17 +300,21 @@ static size_t fs_block_device_count(void) {
     return ata_drive_count() + nvme_namespace_count() + sdmmc_device_count();
 }
 
-static void fs_build_linux_mount(char out[32], uint8_t drive, uint8_t part_no) {
+static void fs_build_block_mount(char out[32], uint8_t drive, uint8_t part_no, fs_kind_t kind) {
     size_t p = 0;
     out[p++] = '/';
-    out[p++] = 'm';
-    out[p++] = 'n';
-    out[p++] = 't';
-    out[p++] = '/';
-    out[p++] = 's';
-    out[p++] = 'd';
-    out[p++] = (char)('a' + (drive % 26u));
+    const char* prefix;
+    switch (kind) {
+        case FS_KIND_FAT:  prefix = "fat";  break;
+        case FS_KIND_EXT2: prefix = "ext2"; break;
+        case FS_KIND_EXT4: prefix = "ext4"; break;
+        case FS_KIND_ISO:  prefix = "iso";  break;
+        default:           prefix = "disk"; break;
+    }
+    while (*prefix && p < 31) out[p++] = *prefix++;
+    p = fs_append_u32(out, 32, p, (uint32_t)drive);
     if (part_no > 0) {
+        if (p < 31) out[p++] = 'p';
         p = fs_append_u32(out, 32, p, (uint32_t)part_no);
     }
     out[p < 32 ? p : 31] = '\0';
@@ -352,23 +356,21 @@ static int fs_mount_bindings(
     void* fs_ctx,
     uint8_t drive,
     uint8_t part_no,
-    fs_kind_t kind
+    fs_kind_t kind,
+    const char* mount_path
 ) {
     fs_block_dev_t dev;
     if (fs_get_block_device(drive, &dev) != 0 || !dev.present) return -1;
 
-    char mount_path[32];
-    if (kind == FS_KIND_ISO) {
-        strcpy(mount_path, "/");
-    } else {
-        fs_build_linux_mount(mount_path, drive, part_no);
+    if (vfs_mount(mount_path, ops, fs_ctx) != 0) {
+        kprintf("[FS] FAILED to mount at %s\n", mount_path);
+        return -1;
     }
+    kprintf("[FS] Mounted at %s (kind=%d)\n", mount_path, (int)kind);
 
-    if (vfs_mount(mount_path, ops, fs_ctx) != 0) return -1;
-
-    {
+    if (kind != FS_KIND_ISO) {
         int score = fs_root_score_from_kind(kind);
-        if (score >= g_root_score) {
+        if (score > g_root_score) {
             (void)vfs_mount("/", ops, fs_ctx);
             g_root_score = score;
         }
@@ -387,7 +389,9 @@ static int fs_mount_fat(uint8_t drive, uint64_t part_lba, uint8_t part_no) {
         return -1;
     }
 
-    if (fs_mount_bindings(fat_fs_backend_ops(), fs, drive, part_no, FS_KIND_FAT) != 0) return -1;
+    char mount_path[32];
+    fs_build_block_mount(mount_path, drive, part_no, FS_KIND_FAT);
+    if (fs_mount_bindings(fat_fs_backend_ops(), fs, drive, part_no, FS_KIND_FAT, mount_path) != 0) return -1;
     fs_register_mounted_partition(drive, part_lba, FS_KIND_FAT);
     g_fat_mount_count++;
     return 0;
@@ -403,7 +407,9 @@ static int fs_mount_ext2(uint8_t drive, uint64_t part_lba, uint8_t part_no) {
         return -1;
     }
 
-    if (fs_mount_bindings(ext2_fs_backend_ops(), fs, drive, part_no, FS_KIND_EXT2) != 0) return -1;
+    char mount_path[32];
+    fs_build_block_mount(mount_path, drive, part_no, FS_KIND_EXT2);
+    if (fs_mount_bindings(ext2_fs_backend_ops(), fs, drive, part_no, FS_KIND_EXT2, mount_path) != 0) return -1;
     fs_register_mounted_partition(drive, part_lba, FS_KIND_EXT2);
     g_ext2_mount_count++;
     return 0;
@@ -420,21 +426,51 @@ static int fs_mount_ext4(uint8_t drive, uint64_t part_lba, uint8_t part_no) {
         return rc;
     }
 
-    if (fs_mount_bindings(ext4_fs_backend_ops(), fs, drive, part_no, FS_KIND_EXT4) != 0) return -1;
+    char mount_path[32];
+    fs_build_block_mount(mount_path, drive, part_no, FS_KIND_EXT4);
+    if (fs_mount_bindings(ext4_fs_backend_ops(), fs, drive, part_no, FS_KIND_EXT4, mount_path) != 0) return -1;
     fs_register_mounted_partition(drive, part_lba, FS_KIND_EXT4);
     g_ext4_mount_count++;
     return 0;
 }
 
 static int fs_mount_iso(uint8_t drive, uint64_t part_lba, uint8_t part_no) {
-    if (fs_partition_already_mounted(drive, part_lba)) return -2;
+    if (fs_partition_already_mounted(drive, part_lba)) {
+        kprintf("[FS] iso: already mounted (drive=%u lba=", drive);
+        kprint_hex64(part_lba);
+        kprintf(")\n");
+        return -2;
+    }
     if (g_iso_mount_count >= (sizeof(g_iso_mounts) / sizeof(g_iso_mounts[0]))) {
+        kprintf("[FS] iso: mount count exhausted\n");
         return -1;
     }
     iso_fs_t* fs = &g_iso_mounts[g_iso_mount_count];
-    if (iso_fs_mount(fs, drive, part_lba) != 0) return -1;
+    if (iso_fs_mount(fs, drive, part_lba) != 0) {
+        kprintf("[FS] iso: iso_fs_mount failed for drive=");
+        kprint_int((int)drive);
+        kprintf("\n");
+        return -1;
+    }
 
-    if (fs_mount_bindings(iso_fs_backend_ops(), fs, drive, part_no, FS_KIND_ISO) != 0) return -1;
+    char mount_path[32];
+    {
+        size_t p = 0;
+        mount_path[p++] = '/';
+        mount_path[p++] = 'i';
+        mount_path[p++] = 's';
+        mount_path[p++] = 'o';
+        p = fs_append_u32(mount_path, 32, p, (uint32_t)g_iso_mount_count);
+        mount_path[p < 32 ? p : 31] = '\0';
+    }
+    kprintf("[FS] iso: mounting at ");
+    kprint(mount_path);
+    kprintf("\n");
+
+    if (fs_mount_bindings(iso_fs_backend_ops(), fs, drive, part_no, FS_KIND_ISO, mount_path) != 0) {
+        kprintf("[FS] iso: fs_mount_bindings failed\n");
+        return -1;
+    }
 
     kprint_ok("FS: ISO mounted");
     fs_register_mounted_partition(drive, part_lba, FS_KIND_ISO);
@@ -560,24 +596,34 @@ static int fs_probe_gpt_partitions(uint8_t drive, const gpt_header_t* hdr, uint6
 static void fs_probe_partitions(uint8_t drive) {
     fs_block_dev_t dev;
     if (fs_get_block_device(drive, &dev) != 0 || !dev.present) {
+        kprintf("[FS] Drive %u: not present\n", drive);
         return;
     }
 
+    kprintf("[FS] Probing drive %u (%s)\n", drive, dev.model);
     if (dev.is_atapi) {
+        kprintf("[FS] Drive %u: ATAPI CD-ROM\n", drive);
         (void)fs_mount_iso(drive, 0, 0);
         return;
     }
 
     uint8_t sec[ATA_SECTOR_SIZE];
     if (fs_device_read_sectors(drive, 0, 1, sec) != 0) {
+        kprintf("[FS] Drive %u: failed to read MBR\n", drive);
         return;
     }
 
     uint64_t total = 0;
-    if (fs_drive_total_sectors(drive, &total) != 0) return;
+    if (fs_drive_total_sectors(drive, &total) != 0) {
+        kprintf("[FS] Drive %u: failed to get size\n", drive);
+        return;
+    }
 
     const mbr_sector_t* mbr = (const mbr_sector_t*)sec;
     int has_mbr = (mbr->sig == 0xAA55);
+    kprintf("[FS] Drive %u: MBR=%d sectors=", drive, has_mbr);
+    kprint_hex64(total);
+    kprintf("\n");
     int mounted_any = 0;
     int has_gpt = 0;
 
@@ -922,6 +968,7 @@ static int fs_should_persist_path(const char* path) {
 }
 
 void fs_init(void) {
+    kprint("======== FS_DEBUG_BUILD_2026 ========\n");
     vfs_init();
     ramfs_init(&g_root_ramfs);
     memset(g_fat_mounts, 0, sizeof(g_fat_mounts));
@@ -944,17 +991,49 @@ void fs_init(void) {
     devfs_init();
     (void)vfs_mount("/dev", devfs_backend_ops(), NULL);
 
+    kprint("[FS] VFS mount table before block probing:\n");
+    vfs_dump_mounts();
+
     size_t drives = fs_block_device_count();
+    kprintf("[FS] block devices: ");
+    kprint_int((int)drives);
+    kprintf("\n");
+
     for (size_t i = 0; i < drives; ++i) {
+        fs_block_dev_t dev;
+        if (fs_get_block_device((uint8_t)i, &dev) == 0) {
+            kprintf("[FS] Drive ");
+            kprint_int((int)i);
+            kprintf(" present=");
+            kprint_int(dev.present ? 1 : 0);
+            kprintf(" atapi=");
+            kprint_int(dev.is_atapi ? 1 : 0);
+            kprintf(" model=");
+            kprint(dev.model);
+            kprintf("\n");
+        }
         fs_probe_partitions((uint8_t)i);
     }
-    g_fs_persist_enabled = (g_root_score == 0 &&
-                            g_fat_mount_count == 0 && g_ext2_mount_count == 0 &&
-                            g_ext4_mount_count == 0 && g_iso_mount_count == 0) ? 1 : 0;
-    if (g_fs_persist_enabled) {
-        fs_persist_load_ramfs();
-    }
+
+    kprintf("[FS] mount counts: fat=");
+    kprint_int((int)g_fat_mount_count);
+    kprintf(" ext2=");
+    kprint_int((int)g_ext2_mount_count);
+    kprintf(" ext4=");
+    kprint_int((int)g_ext4_mount_count);
+    kprintf(" iso=");
+    kprint_int((int)g_iso_mount_count);
+    kprintf(" score=");
+    kprint_int(g_root_score);
+
+    /* Disable persist so it never loads stale ramfs state over our mounts */
+    g_fs_persist_enabled = 0;
+    kprintf(" persist=0 (FORCIBLY DISABLED)\n");
+
     fs_ensure_linux_dirs();
+
+    kprint("[FS] VFS mount table after block probing:\n");
+    vfs_dump_mounts();
 
     kprint_ok("FS: VFS + RAMFS initialized");
 }

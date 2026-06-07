@@ -1533,16 +1533,42 @@ static void desk_inst_log(char logs[DESK_INST_LOG_LINES][96], int* log_count, co
     logs[DESK_INST_LOG_LINES - 1][95] = '\0';
 }
 
+static int parse_mount_name(const char* name, uint64_t* out_drive, uint64_t* out_part) {
+    if (!name || !name[0]) return -1;
+    const char* p = name;
+    while (*p && ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z'))) ++p;
+    if (p == name || *p < '0' || *p > '9') return -1;
+    uint64_t drive = 0;
+    while (*p >= '0' && *p <= '9') {
+        drive = drive * 10u + (uint64_t)(*p - '0');
+        ++p;
+    }
+    uint64_t part = 0;
+    if (*p == 'p') {
+        ++p;
+        if (*p < '0' || *p > '9') return -1;
+        while (*p >= '0' && *p <= '9') {
+            part = part * 10u + (uint64_t)(*p - '0');
+            ++p;
+        }
+    }
+    if (*p != '\0') return -1;
+    if (out_drive) *out_drive = drive;
+    if (out_part) *out_part = part;
+    return 0;
+}
+
 static int desk_inst_find_root_for_drive_part(uint64_t drive, uint64_t part, char out[DESK_INST_PATH_MAX]) {
-    char probe[DESK_INST_PATH_MAX];
-    ntux_dirent_t one[1];
-    uint64_t n = 0;
-    char letter = (char)('a' + (drive % 26u));
-    int rc = snprintf(probe, sizeof(probe), "/mnt/sd%c%llu", letter, (unsigned long long)part);
-    if (rc > 0 && (size_t)rc < sizeof(probe) && sys_fs_list_dir(probe, one, 1, &n) == 0) {
-        strncpy(out, probe, DESK_INST_PATH_MAX - 1);
-        out[DESK_INST_PATH_MAX - 1] = '\0';
-        return 0;
+    ntux_dirent_t entries[32];
+    uint64_t count = 0;
+    if (sys_fs_list_dir("/", entries, 32, &count) != 0) return -1;
+    if (count > 32) count = 32;
+    for (uint64_t i = 0; i < count; ++i) {
+        if (!entries[i].is_dir) continue;
+        uint64_t d, p;
+        if (parse_mount_name(entries[i].name, &d, &p) == 0 && d == drive && p == part) {
+            return join_path("/", entries[i].name, out, DESK_INST_PATH_MAX);
+        }
     }
     return -1;
 }
@@ -2763,12 +2789,49 @@ static long desktop_launch_by_basename_tid(const char* base) {
     for (int d = 0; d < 8; ++d) {
         char media_root[32];
         media_root[0] = '\0';
-        if (str_append(media_root, sizeof(media_root), "/mnt/sd") != 0) continue;
-        if (str_append_char(media_root, sizeof(media_root), (char)('a' + d)) != 0) continue;
+        if (str_append(media_root, sizeof(media_root), "/fat") != 0) continue;
+        if (str_append_i32(media_root, sizeof(media_root), d) != 0) continue;
         for (int p = 1; p <= 8; ++p) {
             char part_root[40];
             part_root[0] = '\0';
             if (str_append(part_root, sizeof(part_root), media_root) != 0) continue;
+            if (str_append_char(part_root, sizeof(part_root), 'p') != 0) continue;
+            if (str_append_i32(part_root, sizeof(part_root), p) != 0) continue;
+            if (join_path(part_root, "apps", app_dir, sizeof(app_dir)) != 0) continue;
+            if (join_path(app_dir, base, candidate, sizeof(candidate)) != 0) continue;
+            if (sys_fs_exists(candidate) <= 0) continue;
+            long tid = sys_task_add(candidate);
+            if (tid >= 0) return tid;
+        }
+    }
+    for (int d = 0; d < 8; ++d) {
+        char mount_root[32];
+        mount_root[0] = '\0';
+        if (str_append(mount_root, sizeof(mount_root), "/ext2") != 0) continue;
+        if (str_append_i32(mount_root, sizeof(mount_root), d) != 0) continue;
+        for (int p = 1; p <= 8; ++p) {
+            char part_root[40];
+            part_root[0] = '\0';
+            if (str_append(part_root, sizeof(part_root), mount_root) != 0) continue;
+            if (str_append_char(part_root, sizeof(part_root), 'p') != 0) continue;
+            if (str_append_i32(part_root, sizeof(part_root), p) != 0) continue;
+            if (join_path(part_root, "apps", app_dir, sizeof(app_dir)) != 0) continue;
+            if (join_path(app_dir, base, candidate, sizeof(candidate)) != 0) continue;
+            if (sys_fs_exists(candidate) <= 0) continue;
+            long tid = sys_task_add(candidate);
+            if (tid >= 0) return tid;
+        }
+    }
+    for (int d = 0; d < 8; ++d) {
+        char mount_root[32];
+        mount_root[0] = '\0';
+        if (str_append(mount_root, sizeof(mount_root), "/ext4") != 0) continue;
+        if (str_append_i32(mount_root, sizeof(mount_root), d) != 0) continue;
+        for (int p = 1; p <= 8; ++p) {
+            char part_root[40];
+            part_root[0] = '\0';
+            if (str_append(part_root, sizeof(part_root), mount_root) != 0) continue;
+            if (str_append_char(part_root, sizeof(part_root), 'p') != 0) continue;
             if (str_append_i32(part_root, sizeof(part_root), p) != 0) continue;
             if (join_path(part_root, "apps", app_dir, sizeof(app_dir)) != 0) continue;
             if (join_path(app_dir, base, candidate, sizeof(candidate)) != 0) continue;
@@ -5194,7 +5257,10 @@ static void seed_filesystem_elf_icons(void) {
     scan_elfs_dir_flat("/apps");
     scan_elfs_dir_flat("/usr/bin");
     scan_elfs_dir_flat("/boot/res/modules");
-    scan_elfs_recursive("/mnt", 0);
+    scan_mount_family("iso", 8);
+    scan_drive_partition_family("fat", 8, 8);
+    scan_drive_partition_family("ext2", 8, 8);
+    scan_drive_partition_family("ext4", 8, 8);
     scan_elfs_recursive("/", 0);
     /* Desktop behaves like a real desktop folder. */
     scan_desktop_dir_icons();
@@ -8855,11 +8921,10 @@ static void wallpaper_scan_all(void) {
     for (int i = 0; i < DESK_LS_MAX; ++i) g_wallpaper_paths[i][0] = '\0';
     wallpaper_thumbs_clear();
     wallpaper_scan_dir("/boot", 0);
-    wallpaper_scan_dir("/mnt", 0);
-    wallpaper_scan_dir("/cd", 0);
-    wallpaper_scan_dir("/cdrom", 0);
     wallpaper_scan_dir("/iso", 0);
     wallpaper_scan_dir("/iso0", 0);
+    wallpaper_scan_dir("/cd", 0);
+    wallpaper_scan_dir("/cdrom", 0);
     if (g_gallery_sel >= g_wallpaper_count) g_gallery_sel = g_wallpaper_count > 0 ? 0 : -1;
 }
 

@@ -21,7 +21,10 @@ QEMUFLAGS := \
     -netdev user,id=net0 \
     -device e1000,netdev=net0 \
     -drive if=none,id=sdcard,file=disk.img,format=raw,cache=none,aio=native \
-    -device sd-card,drive=sdcard
+    -device sd-card,drive=sdcard \
+    -device ahci,id=ahci \
+    -drive file=drive_fat32.img,format=raw,if=none,id=fat32 \
+    -device ide-hd,bus=ahci.0,drive=fat32
 override IMAGE_NAME := NTux-OS-$(ARCH)
 # Optional: absolute or relative path to your IWAD (e.g. /path/to/doom1.wad).
 # If set, `make create-drives` copies it to drive_fat32.img as /doom1.wad.

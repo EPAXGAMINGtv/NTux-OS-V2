@@ -432,7 +432,7 @@ int iso_fs_mount(iso_fs_t* fs, uint8_t drive_index, uint64_t partition_lba) {
 
     for (uint32_t i = 0; i < 64; ++i) {
         if (iso_read_sector(fs, ISO_PVD_SECTOR + i, vd) != 0) return -1;
-        if (memcmp(&vd[1], "CD001", 5) == false) return -1;
+        if (memcmp(&vd[1], "CD001", 5) != 0) return -1;
 
         uint8_t type = vd[0];
         if (type == 0x01) {

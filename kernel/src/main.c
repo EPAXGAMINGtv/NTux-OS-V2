@@ -143,7 +143,7 @@ static void init_cpu(void) {
 static void init_storage_and_fs(void) {
     ata_init();
     nvme_init();
-    //sdmmc_init();
+    //sdmmc_init(); /* hangs on SDHCI with disk.img */
     fs_init();
 
     fs_mkdir("/", "home");

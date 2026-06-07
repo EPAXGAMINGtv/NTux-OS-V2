@@ -663,7 +663,7 @@ static __attribute__((noinline)) int detect_source(char source_out[INS_PATH_MAX]
     }
     if (!have_source) {
         uint64_t n = 0;
-        if (sys_fs_list_dir("/mnt", g_dirents, INS_LS_MAX, &n) == 0) {
+        if (sys_fs_list_dir("/", g_dirents, INS_LS_MAX, &n) == 0) {
             if (n > INS_LS_MAX) n = INS_LS_MAX;
             for (uint64_t i = 0; i < n; ++i) {
                 if (!g_dirents[i].is_dir) continue;
@@ -671,7 +671,7 @@ static __attribute__((noinline)) int detect_source(char source_out[INS_PATH_MAX]
                 char probe_path[INS_PATH_MAX];
                 ntux_dirent_t probe[1];
                 uint64_t pn = 0;
-                if (make_child_path("/mnt", g_dirents[i].name, cand) != 0) continue;
+                if (make_child_path("/", g_dirents[i].name, cand) != 0) continue;
                 if (make_child_path(cand, "boot/limine", probe_path) == 0 &&
                     sys_fs_list_dir(probe_path, probe, 1, &pn) == 0) {
                     strncpy(source_out, cand, INS_PATH_MAX - 1);
@@ -701,16 +701,22 @@ static __attribute__((noinline)) int detect_source(char source_out[INS_PATH_MAX]
 
 static int parse_drive_part_name(const char* name, uint64_t* out_drive, uint64_t* out_part) {
     if (!name || name[0] == '\0') return -1;
-    if (name[0] != 's' || name[1] != 'd') return -1;
-    char letter = name[2];
-    if (letter < 'a' || letter > 'z') return -1;
-    uint64_t drive = (uint64_t)(letter - 'a');
-    const char* p = name + 3;
-    if (*p < '0' || *p > '9') return -1;
-    uint64_t part = 0;
+    const char* p = name;
+    while (*p && ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z'))) ++p;
+    if (p == name || *p < '0' || *p > '9') return -1;
+    uint64_t drive = 0;
     while (*p >= '0' && *p <= '9') {
-        part = part * 10u + (uint64_t)(*p - '0');
+        drive = drive * 10u + (uint64_t)(*p - '0');
         ++p;
+    }
+    uint64_t part = 0;
+    if (*p == 'p') {
+        ++p;
+        if (*p < '0' || *p > '9') return -1;
+        while (*p >= '0' && *p <= '9') {
+            part = part * 10u + (uint64_t)(*p - '0');
+            ++p;
+        }
     }
     if (*p != '\0') return -1;
     if (out_drive) *out_drive = drive;
@@ -720,18 +726,7 @@ static int parse_drive_part_name(const char* name, uint64_t* out_drive, uint64_t
 
 static int find_mount_for_drive_part(uint64_t drive, uint64_t part, char out[INS_PATH_MAX]) {
     uint64_t count = 0;
-    char media_root[INS_PATH_MAX];
-    char letter = (char)('a' + (drive % 26u));
-    int rc = snprintf(media_root, sizeof(media_root), "/mnt/sd%c%llu", letter, (unsigned long long)part);
-    if (rc > 0 && (size_t)rc < sizeof(media_root)) {
-        ntux_dirent_t probe[1];
-        if (sys_fs_list_dir(media_root, probe, 1, &count) == 0) {
-            strncpy(out, media_root, INS_PATH_MAX - 1);
-            out[INS_PATH_MAX - 1] = '\0';
-            return 0;
-        }
-    }
-    rc = sys_fs_list_dir("/mnt", g_dirents, INS_LS_MAX, &count);
+    int rc = sys_fs_list_dir("/", g_dirents, INS_LS_MAX, &count);
     if (rc != 0) return -1;
     if (count > INS_LS_MAX) count = INS_LS_MAX;
     for (uint64_t i = 0; i < count; ++i) {
@@ -740,7 +735,7 @@ static int find_mount_for_drive_part(uint64_t drive, uint64_t part, char out[INS
         uint64_t p = 0;
         if (parse_drive_part_name(g_dirents[i].name, &d, &p) == 0) {
             if (d == drive && p == part) {
-                return make_child_path("/mnt", g_dirents[i].name, out);
+                return make_child_path("/", g_dirents[i].name, out);
             }
         }
     }
