@@ -180,7 +180,7 @@ typedef struct {
 static ahci_controller_t g_ahci_ctrls[AHCI_MAX_CONTROLLERS];
 static size_t g_ahci_ctrl_count;
 
-#define ATA_DETECT_TIMEOUT 1000000
+#define ATA_DETECT_TIMEOUT 100000
 
 static inline void* ata_phys_to_virt(uintptr_t phys) {
     uint64_t off = hhdm_offset_get();
@@ -248,7 +248,7 @@ static void ata_delay(const ata_drive_t* drive) {
 
 static int ata_wait_ready(const ata_drive_t* drive) {
     uint8_t status;
-    for (int i = 0; i < 1000000; ++i) {
+    for (int i = 0; i < ATA_DETECT_TIMEOUT; ++i) {
         status = inb((uint16_t)(drive->io_base + ATA_REG_STATUS));
         if ((status & ATA_SR_BSY) == 0) {
             if (status & ATA_SR_ERR) {
@@ -265,7 +265,7 @@ static int ata_wait_ready(const ata_drive_t* drive) {
 
 static int ata_wait_drq(const ata_drive_t* drive) {
     uint8_t status;
-    for (int i = 0; i < 1000000; ++i) {
+    for (int i = 0; i < ATA_DETECT_TIMEOUT; ++i) {
         status = inb((uint16_t)(drive->io_base + ATA_REG_STATUS));
         if (status & ATA_SR_ERR) {
             return -1;
