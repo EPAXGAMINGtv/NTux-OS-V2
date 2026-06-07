@@ -303,13 +303,6 @@ static void print_help(void) {
 
 static void print_task_result(const char* path, long rc) {
     if (rc >= 0) {
-        ui_color(UI_COLOR_ACCENT);
-        sys_write("[ok] ", 5);
-        ui_reset();
-        sys_write("task started: ", 14);
-        puts(path);
-        ui_color(UI_COLOR_DIM);
-        puts("hint: use 'task list' to inspect scheduler state");
         ui_reset();
     } else {
         ui_color(UI_COLOR_WARN);
