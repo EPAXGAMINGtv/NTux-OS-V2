@@ -36,8 +36,7 @@ static int iso_read_sector(const iso_fs_t* fs, uint32_t lba, uint8_t out[ISO_SEC
     if (!fs || !out) return -1;
 
     if (fs->is_atapi) {
-        uint32_t base = (uint32_t)(fs->partition_lba / 4u);
-        return ata_read_cd_sectors(fs->drive_index, base + lba, 1, out);
+        return ata_read_cd_sectors(fs->drive_index, lba, 1, out);
     }
 
     uint64_t phys_lba = (uint64_t)fs->partition_lba + ((uint64_t)lba * 4u);
@@ -52,8 +51,7 @@ static int iso_read_sectors_batch(const iso_fs_t* fs, uint32_t lba, uint32_t cou
         uint32_t step = remaining;
         if (fs->is_atapi) {
             if (step > 255u) step = 255u;
-            uint32_t base = (uint32_t)(fs->partition_lba / 4u);
-            if (ata_read_cd_sectors(fs->drive_index, base + lba, (uint8_t)step, dst) != 0) return -1;
+            if (ata_read_cd_sectors(fs->drive_index, lba, (uint8_t)step, dst) != 0) return -1;
         } else {
             if (step > 63u) step = 63u; /* 63 ISO sectors = 252 ATA sectors */
             uint64_t phys_lba = (uint64_t)fs->partition_lba + ((uint64_t)lba * 4u);
