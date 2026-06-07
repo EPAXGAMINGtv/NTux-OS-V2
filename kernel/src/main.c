@@ -196,10 +196,10 @@ void kmain(void) {
     }
 
     const char* app_status = NULL;
-    if (module_loader_start_module_ring3("login", &app_status)) {
-        kprint("[BOOT] login module autostart requested\n");
+    if (module_loader_start_module_ring3("konsole", &app_status)) {
+        kprint("[BOOT] konsole module autostart requested\n");
     } else {
-        kprint("[BOOT] login module start failed: ");
+        kprint("[BOOT] konsole module start failed: ");
         if (app_status) {
             kprint(app_status);
         } else {
@@ -207,10 +207,10 @@ void kmain(void) {
         }
         kprint("\n");
         app_status = NULL;
-        if (module_loader_start_module_ring3("konsole", &app_status)) {
-            kprint("[BOOT] konsole module autostart requested\n");
+        if (module_loader_start_module_ring3("login", &app_status)) {
+            kprint("[BOOT] login module autostart requested\n");
         } else {
-            kprint("[BOOT] konsole module start failed: ");
+            kprint("[BOOT] login module start failed: ");
             if (app_status) {
                 kprint(app_status);
             } else {
