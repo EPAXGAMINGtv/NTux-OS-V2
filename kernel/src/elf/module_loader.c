@@ -1130,6 +1130,21 @@ bool module_loader_start_elf_ring3(const char* path, const char **result_text) {
 
     size_t file_len = 0;
     if (fs_read_file(path, NULL, 0, &file_len) != 0 || file_len == 0 || file_len > (16u * 1024u * 1024u)) {
+        /* 0-byte marker file — route to in-memory Limine module by token. */
+        const char *base = path;
+        for (const char *p = path; *p; ++p) {
+            if (*p == '/') base = p + 1;
+        }
+        size_t blen = strlen(base);
+        if (blen > 4 && strcmp(base + blen - 4, ".elf") == 0) {
+            char token[64];
+            size_t tlen = blen - 4;
+            if (tlen >= sizeof(token)) tlen = sizeof(token) - 1;
+            memcpy(token, base, tlen);
+            token[tlen] = '\0';
+            __atomic_store_n(&g_elf_launch_busy, 0, __ATOMIC_RELEASE);
+            return module_loader_start_module_ring3(token, result_text);
+        }
         __atomic_store_n(&g_elf_launch_busy, 0, __ATOMIC_RELEASE);
         if (result_text) *result_text = "failed to read elf size";
         return false;
@@ -1205,30 +1220,10 @@ int module_loader_list(ntux_module_info_t* out, uint64_t max_entries, uint64_t* 
 }
 
 void module_loader_populate_bin(void) {
-    if (!g_modules_ready || !g_module_response || !g_module_response->modules) {
-        kprint("[MOD] populate /bin: no modules\n");
-        return;
-    }
-    int count = 0;
-    for (uint64_t i = 0; i < g_module_response->module_count; ++i) {
-        struct limine_file *f = g_module_response->modules[i];
-        if (!f || !f->address || f->size == 0 || !f->path) continue;
-        size_t plen = strlen(f->path);
-        if (plen < 4 || strcmp(f->path + plen - 4, ".elf") != 0) continue;
-        const char *base = f->path;
-        for (const char *p = f->path; *p; ++p) {
-            if (*p == '/') base = p + 1;
-        }
-        char name[64];
-        size_t nlen = strlen(base);
-        if (nlen >= sizeof(name)) nlen = sizeof(name) - 1;
-        memcpy(name, base, nlen);
-        name[nlen] = '\0';
-        if (fs_create_file("/bin", name, f->address, f->size) == 0) count++;
-    }
-    kprint("[MOD] populated /bin with ");
-    kprint_uint((uint32_t)count);
-    kprint(" modules\n");
+    /* ISO now provides the actual .elf files in /bin/.
+       This function is kept as a no-op stub in case
+       the bootloader-provided modules need to be exposed
+       in a non-ISO environment in the future. */
 }
 
 int module_loader_last_hello_tid(void) {

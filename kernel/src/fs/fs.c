@@ -359,16 +359,16 @@ static int fs_mount_bindings(
 
     char mount_path[32];
     if (kind == FS_KIND_ISO) {
-        strcpy(mount_path, "/boot");
+        strcpy(mount_path, "/");
     } else {
         fs_build_linux_mount(mount_path, drive, part_no);
     }
 
     if (vfs_mount(mount_path, ops, fs_ctx) != 0) return -1;
 
-    if (kind != FS_KIND_ISO) {
+    {
         int score = fs_root_score_from_kind(kind);
-        if (score > g_root_score) {
+        if (score >= g_root_score) {
             (void)vfs_mount("/", ops, fs_ctx);
             g_root_score = score;
         }

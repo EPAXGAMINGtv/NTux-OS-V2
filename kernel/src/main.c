@@ -189,7 +189,6 @@ static void init_kernel(void) {
 void kmain(void) {
     init_kernel();
     module_loader_init();
-    module_loader_populate_bin();
 
     cmos_init();
     if (!apic_init()) {

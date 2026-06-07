@@ -216,6 +216,10 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 	cp -v userspace/bin/snake.elf iso_root/boot/modules/snake.elf
 	cp -v userspace/bin/lua.elf iso_root/boot/modules/lua.elf
 	cp -v userspace/bin/tcc.elf iso_root/boot/modules/tcc.elf
+	# Copy all .elf modules to /bin so they appear in the live filesystem
+	for f in iso_root/boot/modules/*.elf; do \
+		cp -v "$$f" iso_root/bin/; \
+	done
 	cp -v userspace/src/tinycc/examples/ex1.c iso_root/boot/modules/tcc_example.c
 	@if [ -d userspace/bin/tcc ]; then cp -rv userspace/bin/tcc/. iso_root/boot/tcc/; else echo "skip: userspace/bin/tcc (missing)"; fi
 	cp -v userspace/src/lua/ntux_tests/autorun.lua iso_root/boot/modules/autorun.lua
