@@ -213,9 +213,17 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 	cp -v userspace/bin/healthcheck.elf iso_root/boot/modules/healthcheck.elf
 	cp -v userspace/bin/paint.elf iso_root/boot/modules/paint.elf
 	cp -v userspace/bin/calc.elf iso_root/boot/modules/calc.elf
+	cp -v userspace/bin/ntuxpkg.elf iso_root/boot/modules/ntuxpkg.elf
 	cp -v userspace/bin/snake.elf iso_root/boot/modules/snake.elf
 	cp -v userspace/bin/lua.elf iso_root/boot/modules/lua.elf
 	cp -v userspace/bin/tcc.elf iso_root/boot/modules/tcc.elf
+	# Auto-catch any extra user ELFs not explicitly listed above
+	for f in userspace/bin/*.elf; do \
+		name=$$(basename "$$f"); \
+		if [ ! -f "iso_root/boot/modules/$$name" ]; then \
+			cp -v "$$f" "iso_root/boot/modules/$$name"; \
+		fi; \
+	done
 	# Copy all .elf modules to /bin so they appear in the live filesystem
 	for f in iso_root/boot/modules/*.elf; do \
 		cp -v "$$f" iso_root/bin/; \
@@ -324,6 +332,7 @@ endif
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/healthcheck.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/paint.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/calc.elf ::/boot/modules
+	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/ntuxpkg.elf ::/boot/modules
 	@if [ -d res/icons ]; then mcopy -i $(IMAGE_NAME).hdd@@1M -s res/icons ::/boot/res/icons; else echo "skip: res/icons (missing)"; fi
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/flappy.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/xeyes.elf ::/boot/modules
@@ -332,6 +341,13 @@ endif
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/browser.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/lua.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/tcc.elf ::/boot/modules
+	# Auto-catch extra user ELFs (e.g. from test-userspace-template)
+	for f in userspace/bin/*.elf; do \
+		name=$$(basename "$$f"); \
+		if ! mcopy -i $(IMAGE_NAME).hdd@@1M "$$f" "::/boot/modules/$$name" 2>/dev/null; then \
+			echo "skip (already exists or missing): $$name"; \
+		fi; \
+	done 2>/dev/null
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/src/tinycc/examples/ex1.c ::/boot/modules/tcc_example.c
 	@if [ -d userspace/bin/tcc ]; then mcopy -s -i $(IMAGE_NAME).hdd@@1M userspace/bin/tcc ::/boot/tcc; else echo "skip: userspace/bin/tcc (missing)"; fi
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/src/lua/ntux_tests/autorun.lua ::/boot/modules
@@ -411,6 +427,14 @@ create-drives: userspace
 	mcopy -i drive_fat32.img userspace/bin/healthcheck.elf ::/boot/modules/healthcheck.elf
 	mcopy -i drive_fat32.img userspace/bin/paint.elf ::/boot/modules/paint.elf
 	mcopy -i drive_fat32.img userspace/bin/calc.elf ::/boot/modules/calc.elf
+	mcopy -i drive_fat32.img userspace/bin/ntuxpkg.elf ::/boot/modules/ntuxpkg.elf
+	# Auto-catch extra user ELFs (e.g. from test-userspace-template)
+	for f in userspace/bin/*.elf; do \
+		name=$$(basename "$$f"); \
+		if ! mcopy -i drive_fat32.img "$$f" "::/boot/modules/$$name" 2>/dev/null; then \
+			echo "skip (already exists or missing): $$name"; \
+		fi; \
+	done 2>/dev/null
 	@if [ -d res/icons ]; then mcopy -i drive_fat32.img -s res/icons ::/boot/res/icons; else echo "skip: res/icons (missing)"; fi
 	mcopy -i drive_fat32.img userspace/bin/flappy.elf ::/boot/modules/flappy.elf
 	mcopy -i drive_fat32.img userspace/bin/xeyes.elf ::/boot/modules/xeyes.elf

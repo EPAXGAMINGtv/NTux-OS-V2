@@ -843,6 +843,15 @@ static void hello_launch_thread(void) {
         kprint("\n");
         write_cr3(saved_cr3);
         set_current_thread_user_range(user_start, user_end);
+        {
+            int tid = get_current_thread_slot();
+            if (tid >= 0) {
+                uint64_t stack = (uint64_t)NTUX_USER_STACK_PAGES * 0x1000ull;
+                uint64_t mem = (user_end - user_start);
+                uint64_t extra = NTUX_USER_HEAP_EXTRA_BYTES + 0x1000ull + stack;
+                thread_list[tid]->user_mem_bytes = (mem > extra) ? (mem - extra) : 0;
+            }
+        }
         thread_set_current_cr3(user_cr3);
         release_user_range_slot(range_slot);
         kfree(image);
@@ -952,6 +961,15 @@ static void elf_launch_thread(void) {
     kprint("\n");
     write_cr3(saved_cr3);
     set_current_thread_user_range(user_start, user_end);
+    {
+        int tid = get_current_thread_slot();
+        if (tid >= 0) {
+            uint64_t stack = (uint64_t)NTUX_USER_STACK_PAGES * 0x1000ull;
+            uint64_t mem = (user_end - user_start);
+            uint64_t extra = NTUX_USER_HEAP_EXTRA_BYTES + 0x1000ull + stack;
+            thread_list[tid]->user_mem_bytes = (mem > extra) ? (mem - extra) : 0;
+        }
+    }
     thread_set_current_cr3(user_cr3);
     release_user_range_slot(range_slot);
 

@@ -96,15 +96,8 @@ void ntux_user_entry(void) {
         taskmgr_push_hist(hist.cpu_hist, taskmgr_clamp_pct(cpu_pct));
         taskmgr_push_hist(hist.mem_hist, taskmgr_clamp_pct(mem_pct));
         
-        /* GPU stats - show test pattern if no real GPU data */
-        int gpu_display = gpu_pct;
-        if (gpu_display == 0) {
-            /* Display test pattern: 0-100-50 wave */
-            static int test_gpu_counter = 0;
-            gpu_display = (int)(50 + 50 * (test_gpu_counter % 200 > 100 ? 100 - (test_gpu_counter % 100) : (test_gpu_counter % 100)) / 100);
-            if (test_gpu_counter++ > 200) test_gpu_counter = 0;
-        }
-        taskmgr_push_hist(hist.gpu_hist, taskmgr_clamp_pct(gpu_display));
+        /* GPU stats - use real data or 0 */
+        taskmgr_push_hist(hist.gpu_hist, taskmgr_clamp_pct(gpu_pct));
         
         /* Disk stats */
         {
@@ -115,22 +108,14 @@ void ntux_user_entry(void) {
             if (disk_pct > 100) disk_pct = 100;
             if (disk_pct < 0) disk_pct = 0;
             
-            /* Disk stats - show test pattern if no real disk data */
-            int disk_display = disk_pct;
-            if (disk_display == 0) {
-                /* Display test pattern: 0-70-30 wave */
-                static int test_disk_counter = 0;
-                disk_display = (int)(35 + 35 * (test_disk_counter % 150 > 75 ? 75 - (test_disk_counter % 75) : (test_disk_counter % 75)) / 75);
-                if (test_disk_counter++ > 150) test_disk_counter = 0;
-            }
-            taskmgr_push_hist(hist.disk_hist, taskmgr_clamp_pct(disk_display));
+            taskmgr_push_hist(hist.disk_hist, taskmgr_clamp_pct(disk_pct));
         }
 
-        disp_cpu = (disp_cpu * 7 + cpu_pct * 3) / 10;
-        disp_mem = (disp_mem * 7 + mem_pct * 3) / 10;
-        disp_gpu = (disp_gpu * 7 + gpu_pct * 3) / 10;
-        disp_rd = (disp_rd * 7 + rd_bps * 3) / 10;
-        disp_wr = (disp_wr * 7 + wr_bps * 3) / 10;
+        disp_cpu = cpu_pct;
+        disp_mem = mem_pct;
+        disp_gpu = gpu_pct;
+        disp_rd = rd_bps;
+        disp_wr = wr_bps;
 
         uint32_t task_count = 0;
         ntux_task_info_t tasks[TASKMGR_MAX_TASKS];
@@ -152,8 +137,20 @@ void ntux_user_entry(void) {
         uint64_t elapsed = (last_ticks > 0 && cpu_now.ticks > last_ticks) ? (cpu_now.ticks - last_ticks) : 0;
         for (uint64_t i = 0; i < tcount; ++i) {
             uint64_t tid = tasks[i].id;
-            uint64_t prev = (tid < TASKMGR_TICK_TRACK) ? prev_task_ticks[tid] : 0;
+            task_mem[i] = (uint32_t)(tasks[i].mem_bytes / 1024ull);
+            if (tid >= TASKMGR_TICK_TRACK) continue;
+            uint64_t prev = prev_task_ticks[tid];
             uint64_t now = tasks[i].cpu_ticks;
+            if (prev == 0 && now == 0) {
+                task_cpu[i] = 0;
+                task_mem[i] = 0;
+                continue;
+            }
+            if (prev == 0) {
+                prev_task_ticks[tid] = now;
+                task_cpu[i] = 0;
+                continue;
+            }
             uint64_t delta = (now >= prev) ? (now - prev) : 0;
             int pct = 0;
             if (elapsed > 0) {
@@ -162,8 +159,7 @@ void ntux_user_entry(void) {
                 if (pct < 0) pct = 0;
             }
             task_cpu[i] = (uint8_t)pct;
-            task_mem[i] = (uint32_t)(tasks[i].mem_bytes / 1024ull);
-            if (tid < TASKMGR_TICK_TRACK) prev_task_ticks[tid] = now;
+            prev_task_ticks[tid] = now;
         }
 
         if (sel_index >= (int)tcount) sel_index = (tcount > 0) ? (int)tcount - 1 : -1;

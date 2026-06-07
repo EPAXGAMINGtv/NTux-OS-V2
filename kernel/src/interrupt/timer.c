@@ -91,8 +91,10 @@ void timer_handler(void) {
                     thread_unlock_global();
                 }
             }
+            return;
         }
     }
+    idle_tick_count++;
 }
 void init_timer() {
     timer_pit_config();

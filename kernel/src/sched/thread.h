@@ -29,6 +29,7 @@ typedef struct thread {
     uint64_t wake_tick;
     uint8_t kill_pending;
     uint64_t cpu_ticks;
+    uint64_t user_mem_bytes;
     fd_entry_t fds[FD_MAX];
 
     /* Ready queue links */

@@ -52,12 +52,10 @@ static int name_is_valid(const char* s) {
 
 static const char* task_state_name(uint32_t state) {
     switch (state) {
-        case 0: return "Ready";
-        case 1: return "Running";
-        case 2: return "Waiting";
-        case 3: return "Stopped";
-        case 4: return "Zombie";
-        case 5: return "Blocked";
+        case 0: return "Running";
+        case 1: return "Ready";
+        case 2: return "Blocked";
+        case 3: return "Zombie";
         default: return "Unknown";
     }
 }

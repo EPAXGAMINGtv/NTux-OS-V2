@@ -47,6 +47,7 @@ BASE_PAINT := 0x59000000
 BASE_SCREENSAVER := 0x5C000000
 BASE_CALC := 0x5F000000
 
+
 LDFLAGS_DESKTOP := $(LDFLAGS) --defsym=USER_BASE=$(BASE_DESKTOP)
 LDFLAGS_HELLO := $(LDFLAGS) --defsym=USER_BASE=$(BASE_HELLO)
 LDFLAGS_INSTALLER := $(LDFLAGS) --defsym=USER_BASE=$(BASE_INSTALLER)
@@ -79,6 +80,7 @@ LDFLAGS_BROWSER := $(LDFLAGS) --defsym=USER_BASE=$(BASE_BROWSER)
 LDFLAGS_PAINT := $(LDFLAGS) --defsym=USER_BASE=$(BASE_PAINT)
 LDFLAGS_SCREENSAVER := $(LDFLAGS) --defsym=USER_BASE=$(BASE_SCREENSAVER)
 LDFLAGS_CALC := $(LDFLAGS) --defsym=USER_BASE=$(BASE_CALC)
+
 
 OUT_DIR := bin
 OBJ_DIR := obj
@@ -120,6 +122,7 @@ TCC_SRC := src/tinycc/tcc_desk.c
 BROWSER_SRC := src/browser/browser.c
 PAINT_SRC := src/paint/paint.c
 CALC_SRC := src/calc/calc.c
+
 
 
 
@@ -322,7 +325,7 @@ TCC_INCLUDE_STAMP := $(TCC_INC_DIR)/.stamp
 
 .PHONY: all clean
 
-ALL_TARGETS := $(OUT_DIR)/hello.elf $(OUT_DIR)/konsole.elf $(OUT_DIR)/hellokonsole.elf $(OUT_DIR)/installer.elf $(OUT_DIR)/installer_term.elf $(OUT_DIR)/desktop.elf $(OUT_DIR)/terminal.elf $(OUT_DIR)/deskdemo.elf $(OUT_DIR)/screensaver.elf $(OUT_DIR)/login.elf $(OUT_DIR)/doom.elf $(OUT_DIR)/epaxfetch.elf $(OUT_DIR)/tetris.elf $(OUT_DIR)/taskmgr.elf $(OUT_DIR)/deskconsole.elf $(OUT_DIR)/explorer.elf $(OUT_DIR)/editor.elf $(OUT_DIR)/bench.elf $(OUT_DIR)/imgview.elf $(OUT_DIR)/objview.elf $(OUT_DIR)/flappy.elf $(OUT_DIR)/xeyes.elf $(OUT_DIR)/settings.elf $(OUT_DIR)/partutil.elf $(OUT_DIR)/test.elf $(OUT_DIR)/snake.elf $(OUT_DIR)/healthcheck.elf $(OUT_DIR)/lua.elf $(OUT_DIR)/tcc.elf $(OUT_DIR)/browser.elf $(OUT_DIR)/paint.elf $(OUT_DIR)/calc.elf $(TCC_LIBC_A) $(TCC_LIBTCC1_A) $(TCC_CRT1_OBJ) $(TCC_CRTI_OBJ) $(TCC_CRTN_OBJ) $(TCC_INCLUDE_STAMP)
+ALL_TARGETS := $(OUT_DIR)/hello.elf $(OUT_DIR)/konsole.elf $(OUT_DIR)/hellokonsole.elf $(OUT_DIR)/installer.elf $(OUT_DIR)/installer_term.elf $(OUT_DIR)/desktop.elf $(OUT_DIR)/terminal.elf $(OUT_DIR)/deskdemo.elf $(OUT_DIR)/screensaver.elf $(OUT_DIR)/login.elf $(OUT_DIR)/doom.elf $(OUT_DIR)/epaxfetch.elf $(OUT_DIR)/tetris.elf $(OUT_DIR)/taskmgr.elf $(OUT_DIR)/deskconsole.elf $(OUT_DIR)/explorer.elf $(OUT_DIR)/editor.elf $(OUT_DIR)/bench.elf $(OUT_DIR)/imgview.elf $(OUT_DIR)/objview.elf $(OUT_DIR)/flappy.elf $(OUT_DIR)/xeyes.elf $(OUT_DIR)/settings.elf $(OUT_DIR)/partutil.elf $(OUT_DIR)/test.elf $(OUT_DIR)/snake.elf $(OUT_DIR)/healthcheck.elf $(OUT_DIR)/lua.elf $(OUT_DIR)/tcc.elf $(OUT_DIR)/browser.elf $(OUT_DIR)/paint.elf $(OUT_DIR)/calc.elf $(OUT_DIR)/ntuxpkg.elf $(TCC_LIBC_A) $(TCC_LIBTCC1_A) $(TCC_CRT1_OBJ) $(TCC_CRTI_OBJ) $(TCC_CRTN_OBJ) $(TCC_INCLUDE_STAMP)
 ifeq ($(HAS_CXX),1)
 ALL_TARGETS += $(OUT_DIR)/cpphello.elf
 endif
@@ -441,6 +444,15 @@ $(OUT_DIR)/healthcheck.elf: $(HEALTHCHECK_OBJ) linker.ld
 	@mkdir -p $(OUT_DIR)
 	$(LD) $(LDFLAGS_HEALTHCHECK) $(HEALTHCHECK_OBJ) -o $@
 
+
+$(OUT_DIR)/lua.elf: $(LUA_OBJ) linker.ld
+	@mkdir -p $(OUT_DIR)
+	$(LD) $(LDFLAGS_LUA) $(LUA_OBJ) -o $@
+
+$(OUT_DIR)/tcc.elf: $(TCC_OBJ) linker.ld
+	@mkdir -p $(OUT_DIR)
+	$(LD) $(LDFLAGS_TCC) $(TCC_OBJ) -o $@
+
 $(OUT_DIR)/browser.elf: $(BROWSER_OBJ) linker.ld
 	@mkdir -p $(OUT_DIR)
 	$(LD) $(LDFLAGS_BROWSER) $(BROWSER_OBJ) -o $@
@@ -453,13 +465,12 @@ $(OUT_DIR)/calc.elf: $(CALC_OBJ) linker.ld
 	@mkdir -p $(OUT_DIR)
 	$(LD) $(LDFLAGS_CALC) $(CALC_OBJ) -o $@
 
-$(OUT_DIR)/lua.elf: $(LUA_OBJ) linker.ld
+# ntuxpkg — external submodule (standalone build)
+NTUXPKG_DIR := ntuxpkg
+$(OUT_DIR)/ntuxpkg.elf: $(NTUXPKG_DIR)/GNUmakefile $(wildcard $(NTUXPKG_DIR)/src/*) $(wildcard $(NTUXPKG_DIR)/libc/*)
 	@mkdir -p $(OUT_DIR)
-	$(LD) $(LDFLAGS_LUA) $(LUA_OBJ) -o $@
-
-$(OUT_DIR)/tcc.elf: $(TCC_OBJ) linker.ld
-	@mkdir -p $(OUT_DIR)
-	$(LD) $(LDFLAGS_TCC) $(TCC_OBJ) -o $@
+	$(MAKE) -C $(NTUXPKG_DIR)
+	cp $(NTUXPKG_DIR)/out/ntuxpkg.elf $@
 
 $(OBJ_DIR)/hello/%.o: %.c
 	@mkdir -p $(dir $@)

@@ -53,6 +53,7 @@ static void thread_init_common(thread_t* t, void (*entry)(void)) {
     t->wake_tick = 0;
     t->kill_pending = 0;
     t->cpu_ticks = 0;
+    t->user_mem_bytes = 0;
     t->quantum = TIME_SLICE_DEFAULT;
     t->priority = 0;
     t->rq_next = NULL;

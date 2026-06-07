@@ -397,13 +397,9 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                     out[total].running_core = 0;
                     out[total].affinity_core = 0;
                     out[total].uid = t->uid;
-                    out[total].active = 1u;
+                    out[total].active = (t->state != THREAD_TERMINATED) ? 1u : 0u;
                     out[total].cpu_ticks = t->cpu_ticks;
-                    if (t->user_vend > t->user_vstart) {
-                        out[total].mem_bytes = (uint64_t)(t->user_vend - t->user_vstart);
-                    } else {
-                        out[total].mem_bytes = 0u;
-                    }
+                    out[total].mem_bytes = t->user_mem_bytes;
                 }
                 total++;
             }
