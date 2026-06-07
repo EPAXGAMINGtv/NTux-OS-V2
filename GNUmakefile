@@ -343,13 +343,11 @@ endif
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/browser.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/lua.elf ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/bin/tcc.elf ::/boot/modules
-	# Auto-catch extra user ELFs (e.g. from test-userspace-template)
+	# Auto-catch extra user ELFs not explicitly listed above (-o: overwrite without prompting)
 	for f in userspace/bin/*.elf; do \
 		name=$$(basename "$$f"); \
-		if ! mcopy -i $(IMAGE_NAME).hdd@@1M "$$f" "::/boot/modules/$$name" 2>/dev/null; then \
-			echo "skip (already exists or missing): $$name"; \
-		fi; \
-	done 2>/dev/null
+		mcopy -o -i $(IMAGE_NAME).hdd@@1M "$$f" "::/boot/modules/$$name" 2>/dev/null || echo "skip: $$name"; \
+	done
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/src/tinycc/examples/ex1.c ::/boot/modules/tcc_example.c
 	@if [ -d userspace/bin/tcc ]; then mcopy -s -i $(IMAGE_NAME).hdd@@1M userspace/bin/tcc ::/boot/tcc; else echo "skip: userspace/bin/tcc (missing)"; fi
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/src/lua/ntux_tests/autorun.lua ::/boot/modules
@@ -406,6 +404,7 @@ create-drives: userspace
 	mmd -i drive_fat32.img ::/boot/res
 	mmd -i drive_fat32.img ::/boot/res/modules
 	mcopy -i drive_fat32.img userspace/bin/hello.elf ::/boot/modules/hello.elf
+	mcopy -i drive_fat32.img userspace/bin/konsole.elf ::/boot/modules/konsole.elf
 	mcopy -i drive_fat32.img userspace/bin/hellokonsole.elf ::/boot/modules/hellokonsole.elf
 	@if [ -f userspace/bin/cpphello.elf ]; then mcopy -i drive_fat32.img userspace/bin/cpphello.elf ::/boot/modules/cpphello.elf; else echo "skip: userspace/bin/cpphello.elf (no C++ compiler)"; fi
 	mcopy -i drive_fat32.img userspace/bin/installer.elf ::/boot/modules/installer.elf
@@ -430,13 +429,11 @@ create-drives: userspace
 	mcopy -i drive_fat32.img userspace/bin/paint.elf ::/boot/modules/paint.elf
 	mcopy -i drive_fat32.img userspace/bin/calc.elf ::/boot/modules/calc.elf
 	mcopy -i drive_fat32.img userspace/bin/ntuxpkg.elf ::/boot/modules/ntuxpkg.elf
-	# Auto-catch extra user ELFs (e.g. from test-userspace-template)
+	# Auto-catch extra user ELFs not explicitly listed above (-o: overwrite without prompting)
 	for f in userspace/bin/*.elf; do \
 		name=$$(basename "$$f"); \
-		if ! mcopy -i drive_fat32.img "$$f" "::/boot/modules/$$name" 2>/dev/null; then \
-			echo "skip (already exists or missing): $$name"; \
-		fi; \
-	done 2>/dev/null
+		mcopy -o -i drive_fat32.img "$$f" "::/boot/modules/$$name" 2>/dev/null || echo "skip: $$name"; \
+	done
 	@if [ -d res/icons ]; then mcopy -i drive_fat32.img -s res/icons ::/boot/res/icons; else echo "skip: res/icons (missing)"; fi
 	mcopy -i drive_fat32.img userspace/bin/flappy.elf ::/boot/modules/flappy.elf
 	mcopy -i drive_fat32.img userspace/bin/xeyes.elf ::/boot/modules/xeyes.elf
