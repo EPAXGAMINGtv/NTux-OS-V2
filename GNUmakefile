@@ -429,11 +429,6 @@ create-drives: userspace
 	mcopy -i drive_fat32.img userspace/bin/paint.elf ::/boot/modules/paint.elf
 	mcopy -i drive_fat32.img userspace/bin/calc.elf ::/boot/modules/calc.elf
 	mcopy -i drive_fat32.img userspace/bin/ntuxpkg.elf ::/boot/modules/ntuxpkg.elf
-	# Auto-catch extra user ELFs not explicitly listed above (-o: overwrite without prompting)
-	for f in userspace/bin/*.elf; do \
-		name=$$(basename "$$f"); \
-		mcopy -o -i drive_fat32.img "$$f" "::/boot/modules/$$name" 2>/dev/null || echo "skip: $$name"; \
-	done
 	@if [ -d res/icons ]; then mcopy -i drive_fat32.img -s res/icons ::/boot/res/icons; else echo "skip: res/icons (missing)"; fi
 	mcopy -i drive_fat32.img userspace/bin/flappy.elf ::/boot/modules/flappy.elf
 	mcopy -i drive_fat32.img userspace/bin/xeyes.elf ::/boot/modules/xeyes.elf
@@ -443,6 +438,13 @@ create-drives: userspace
 	mcopy -i drive_fat32.img userspace/bin/test.elf ::/boot/modules/test.elf
 	mcopy -i drive_fat32.img userspace/bin/lua.elf ::/boot/modules/lua.elf
 	mcopy -i drive_fat32.img userspace/bin/tcc.elf ::/boot/modules/tcc.elf
+	# Auto-catch any remaining .elf not explicitly listed above (e.g. myapp.elf)
+	for f in userspace/bin/*.elf; do \
+		name=$$(basename "$$f"); \
+		if ! mcopy -o -i drive_fat32.img "$$f" "::/boot/modules/$$name" 2>/dev/null; then \
+			echo "skip: $$name"; \
+		fi; \
+	done
 	mcopy -i drive_fat32.img userspace/src/tinycc/examples/ex1.c ::/boot/modules/tcc_example.c
 	@if [ -d userspace/bin/tcc ]; then mcopy -s -i drive_fat32.img userspace/bin/tcc ::/boot/tcc; else echo "skip: userspace/bin/tcc (missing)"; fi
 	mcopy -i drive_fat32.img userspace/src/lua/ntux_tests/autorun.lua ::/boot/modules/autorun.lua
@@ -456,10 +458,7 @@ create-drives: userspace
 		echo "Copying IWAD from $$WAD_SRC to /doom1.wad"; \
 		mcopy -i drive_fat32.img "$$WAD_SRC" ::/doom1.wad; \
 	else \
-		echo "ERROR: no IWAD found."; \
-		echo "Set DOOM_WAD_PATH, e.g.:"; \
-		echo "  make create-drives DOOM_WAD_PATH=/path/to/doom1.wad"; \
-		exit 1; \
+		echo "skip: no IWAD found (set DOOM_WAD_PATH=/path/to/doom1.wad)"; \
 	fi
 	# Put wallpaper.jpg into FAT32 under /wallpaper/
 	mmd -i drive_fat32.img ::/wallpaper
