@@ -558,17 +558,36 @@ static int ahci_issue_atapi_packet(hba_port_t* port, const uint8_t packet[12], u
     fis->fis_type = 0x27;
     fis->pmport_c = 1u << 7;
     fis->command = ATA_CMD_PACKET;
-    fis->device = 0;
+    fis->device = 0xA0;
+    fis->featurel = 0;           /* PIO transfer mode */
+    fis->lba1 = (uint8_t)(bytes & 0xFFu);       /* byte count limit low */
+    fis->lba2 = (uint8_t)((bytes >> 8) & 0xFFu); /* byte count limit high */
 
     port->is = 0xFFFFFFFFu;
     port->ci = 1u << slot;
 
     for (int i = 0; i < ATA_DETECT_TIMEOUT; ++i) {
         if ((port->ci & (1u << slot)) == 0) break;
-        if (port->is & HBA_PxIS_TFES) return -7;
+        if (port->is & HBA_PxIS_TFES) {
+            kprintf("[AHCI] ATAPI TFES: tfd=0x");
+            kprint_hex64((uint64_t)port->tfd);
+            kprintf(" serr=0x");
+            kprint_hex64((uint64_t)port->serr);
+            kprintf(" cmd=0x");
+            kprint_hex64((uint64_t)port->cmd);
+            kprintf("\n");
+            return -7;
+        }
         if (i == ATA_DETECT_TIMEOUT - 1) return -8;
     }
-    if (port->is & HBA_PxIS_TFES) return -9;
+    if (port->is & HBA_PxIS_TFES) {
+        kprintf("[AHCI] ATAPI TFES2: tfd=0x");
+        kprint_hex64((uint64_t)port->tfd);
+        kprintf(" serr=0x");
+        kprint_hex64(port->serr);
+        kprintf("\n");
+        return -9;
+    }
     return 0;
 }
 
@@ -684,7 +703,11 @@ static void ata_scan_ahci(bool verbose) {
             if (det != AHCI_PORT_DET_PRESENT || ipm != AHCI_PORT_IPM_ACTIVE) continue;
 
             ata_drive_type_t type = ahci_probe_signature(port->sig);
-            if (type == ATA_DRIVE_NONE) continue;
+            if (type == ATA_DRIVE_NONE) {
+                kprintf("[AHCI] port %d sig=0x%x (NONE)\n", port_idx, port->sig);
+                continue;
+            }
+            kprintf("[AHCI] port %d sig=0x%x type=%d det=%d ipm=%d\n", port_idx, port->sig, type, det, ipm);
 
             if (ahci_configure_port(port) != 0) continue;
 

@@ -1,5 +1,6 @@
 #include <fs/iso.h>
 
+#include <drivers/framebuffer/kprint.h>
 #include <drivers/sata/ata.h>
 #include <lib/ctype.h>
 #include <lib/string.h>
