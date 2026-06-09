@@ -95,7 +95,8 @@ static void mouse_try_enable_wheel(void) {
     mouse_has_wheel = false;
     mouse_packet_size = 3;
 
-    
+    ps2_flush_output();
+
     if (!mouse_write_device(0xF3)) return;
     if (!mouse_write_device(200)) return;
     if (!mouse_write_device(0xF3)) return;
@@ -112,6 +113,13 @@ static void mouse_try_enable_wheel(void) {
     }
 }
 
+static int mouse_detect_type(void) {
+    ps2_flush_output();
+    if (!mouse_write_device(0xF2)) return 0;
+    uint8_t id = mouse_read_data_byte();
+    return (int)id;
+}
+
 void mouse_set_bounds(int width, int height) {
     if (width > 0) mouse_bound_w = width;
     if (height > 0) mouse_bound_h = height;
@@ -124,8 +132,6 @@ void mouse_set_bounds(int width, int height) {
 
 bool mouse_init(void) {
     if (!ps2_is_dual_channel()) {
-        /* Some laptops expose the touchpad via the aux device even if the controller
-           reports only a single channel. Try anyway and enable aux IRQ if it responds. */
         kprint("[MOUSE] No second PS/2 port reported, probing aux device...\n");
         ps2_write_command(PS2_CMD_ENABLE_PORT2);
         uint8_t cfg = ps2_read_config();
@@ -134,10 +140,16 @@ bool mouse_init(void) {
         ps2_write_config(cfg);
     }
 
+    ps2_flush_output();
     if (!ps2_write_device(2, 0xF6)) {
         kprint_error("[MOUSE] PS/2 mouse reset defaults failed\n");
         return false;
     }
+
+    int dev_id = mouse_detect_type();
+    kprintf("[MOUSE] device ID=%d\n", dev_id);
+
+    ps2_flush_output();
     if (!ps2_write_device(2, 0xF4)) {
         kprint_error("[MOUSE] PS/2 mouse enable stream failed\n");
         return false;
@@ -146,7 +158,15 @@ bool mouse_init(void) {
     mouse_cycle = 0;
     mouse_scroll = 0;
     mouse_set_bounds((int)gpu_get_width(), (int)gpu_get_height());
-    mouse_try_enable_wheel();
+
+    if (dev_id == 0 || dev_id < 0) {
+        mouse_try_enable_wheel();
+    } else if (dev_id == 3 || dev_id == 4) {
+        mouse_has_wheel = true;
+        mouse_packet_size = 4;
+        kprint("PS/2 mouse wheel enabled (from ID)\n");
+    }
+
     irq_register_handler(12, mouse_irq_handler);
     pic_clear_mask(2);
     pic_clear_mask(12);

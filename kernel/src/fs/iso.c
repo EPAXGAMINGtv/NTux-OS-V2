@@ -429,8 +429,16 @@ int iso_fs_mount(iso_fs_t* fs, uint8_t drive_index, uint64_t partition_lba) {
     uint32_t joliet_lba = 0, joliet_size = 0;
 
     for (uint32_t i = 0; i < 64; ++i) {
-        if (iso_read_sector(fs, ISO_PVD_SECTOR + i, vd) != 0) return -1;
-        if (memcmp(&vd[1], "CD001", 5) != 0) return -1;
+        int sec_rc = iso_read_sector(fs, ISO_PVD_SECTOR + i, vd);
+        if (sec_rc != 0) {
+            kprintf("[iso] read sector 16+");
+            kprint_uint(i);
+            kprintf(" failed rc=");
+            kprint_int(sec_rc);
+            kprintf("\n");
+            return -1;
+        }
+        if (memcmp(&vd[1], "CD001", 5) != 0) break;
 
         uint8_t type = vd[0];
         if (type == 0x01) {
