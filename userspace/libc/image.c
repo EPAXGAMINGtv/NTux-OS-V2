@@ -7,6 +7,7 @@
 #define STBI_NO_STDIO
 #define STBI_NO_HDR
 #define STBI_NO_LINEAR
+#define STBI_NO_THREAD_LOCALS
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
@@ -107,16 +108,7 @@ static int image_downscale_nearest(image_t* img, int max_w, int max_h) {
         for (int x = 0; x < tw; ++x) {
             int sx = (int)((int64_t)x * img->width / (tw ? tw : 1));
             const uint8_t* px = row + (size_t)sx * (size_t)ch;
-            if (ch == 3) {
-                dst[x * 3 + 0] = px[0];
-                dst[x * 3 + 1] = px[1];
-                dst[x * 3 + 2] = px[2];
-            } else {
-                dst[x * 4 + 0] = px[0];
-                dst[x * 4 + 1] = px[1];
-                dst[x * 4 + 2] = px[2];
-                dst[x * 4 + 3] = px[3];
-            }
+            memcpy(&dst[x * ch], px, (size_t)ch);
         }
     }
     free(img->data);

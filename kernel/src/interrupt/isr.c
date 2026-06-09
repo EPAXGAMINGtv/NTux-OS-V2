@@ -3,6 +3,7 @@
 #include <drivers/framebuffer/kprint.h>
 #include <sched/thread.h>
 
+
 #define ISR_EXIT_STACK_SIZE 4096
 static uint8_t g_isr_exit_stack[ISR_EXIT_STACK_SIZE];
 
@@ -24,23 +25,25 @@ static int current_thread_is_user(void) {
 }
 
 int isr_handle_error(uint64_t interrupt_number, uint64_t error_code, uint64_t rip, uint64_t cs) {
-    trigger_blue_screen(interrupt_number, error_code);
-    if (!current_thread_is_user()) {
-        for (;;) {
-            __asm__ volatile("hlt");
-        }
+    if (current_thread_is_user()) {
+        kprintf("[isr] user fault: int="); kprint_uint((uint32_t)interrupt_number); kprintf(" err=0x"); kprint_hex64(error_code); kprintf(" rip=0x"); kprint_hex64(rip); kprintf(", terminating thread\n");
+        isr_terminate_current_thread();
+        return 0;
     }
-    isr_terminate_current_thread();
-    return 0;
+    trigger_blue_screen(interrupt_number, error_code);
+    for (;;) {
+        __asm__ volatile("hlt");
+    }
 }
 
 int isr_handle_interrupt(uint64_t interrupt_number, uint64_t rip, uint64_t cs) {
-    trigger_blue_screen(interrupt_number, 0);
-    if (!current_thread_is_user()) {
-        for (;;) {
-            __asm__ volatile("hlt");
-        }
+    if (current_thread_is_user()) {
+        kprintf("[isr] user interrupt: int="); kprint_uint((uint32_t)interrupt_number); kprintf(" rip=0x"); kprint_hex64(rip); kprintf(", terminating thread\n");
+        isr_terminate_current_thread();
+        return 0;
     }
-    isr_terminate_current_thread();
-    return 0;
+    trigger_blue_screen(interrupt_number, 0);
+    for (;;) {
+        __asm__ volatile("hlt");
+    }
 }
