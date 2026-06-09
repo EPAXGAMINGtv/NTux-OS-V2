@@ -7,15 +7,30 @@
 #define VRING_DESC_F_NEXT  1
 #define VRING_DESC_F_WRITE 2
 
-#define VIRTIO_GPU_F_VIRGL 0
-#define VIRTIO_GPU_F_EDID 1
+#define VIRTIO_GPU_F_VIRGL      0
+#define VIRTIO_GPU_F_EDID       1
+#define VIRTIO_GPU_F_VIRGL_BIT  (1u << 28)
+
+#define VIRTIO_GPU_CMD_CTX_CREATE       0x0201
+#define VIRTIO_GPU_CMD_CTX_DESTROY      0x0202
+#define VIRTIO_GPU_CMD_CTX_ATTACH_RES   0x0203
+#define VIRTIO_GPU_CMD_CTX_DETACH_RES   0x0204
+#define VIRTIO_GPU_CMD_SUBMIT_3D        0x0205
+#define VIRTIO_GPU_CMD_RESOURCE_CREATE_3D 0x0208
+#define VIRTIO_GPU_CMD_RESOURCE_UNREF   0x0102
+
+#define VIRTIO_GPU_RESOURCE_TYPE_PLANAR 0
+#define VIRTIO_GPU_RESOURCE_TYPE_Y_UV_420 1
+#define VIRTIO_GPU_RESOURCE_TYPE_Y_U_V_420 2
+#define VIRTIO_GPU_RESOURCE_TYPE_Y_U_V_422 3
+#define VIRTIO_GPU_RESOURCE_TYPE_Y_U_V_444 4
 
 #define VIRTIO_GPU_CMD_GET_DISPLAY_INFO      0x0100
 #define VIRTIO_GPU_CMD_RESOURCE_CREATE_2D    0x0101
-#define VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING 0x0103
-#define VIRTIO_GPU_CMD_SET_SCANOUT           0x0104
-#define VIRTIO_GPU_CMD_RESOURCE_FLUSH        0x0105
-#define VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D   0x0102
+#define VIRTIO_GPU_CMD_SET_SCANOUT           0x0103
+#define VIRTIO_GPU_CMD_RESOURCE_FLUSH        0x0104
+#define VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D   0x0105
+#define VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING 0x0106
 
 #define VIRTIO_GPU_RESP_OK_NODATA            0x1100
 #define VIRTIO_GPU_RESP_OK_DISPLAY_INFO      0x1101
@@ -122,13 +137,16 @@ struct virtio_gpu_resource_create_2d {
     uint32_t height;
 };
 
-struct virtio_gpu_set_scanout {
-    struct virtio_gpu_ctrl_hdr hdr;
-    uint32_t r;
+struct virtio_gpu_rect {
     uint32_t x;
     uint32_t y;
     uint32_t width;
     uint32_t height;
+};
+
+struct virtio_gpu_set_scanout {
+    struct virtio_gpu_ctrl_hdr hdr;
+    struct virtio_gpu_rect r;
     uint32_t scanout_id;
     uint32_t resource_id;
 };
@@ -156,10 +174,18 @@ struct virtio_gpu_resource_flush {
     uint32_t padding;
 };
 
-struct virtio_gpu_resource_attach_backing_entry {
-    uint64_t addr;
-    uint64_t length;
+struct virtio_gpu_ctx_create {
+    struct virtio_gpu_ctrl_hdr hdr;
+    uint32_t nlen;
+    uint32_t padding;
+    char name[64];
 };
+
+struct virtio_gpu_mem_entry {
+    uint64_t addr;
+    uint32_t length;
+    uint32_t padding;
+} __attribute__((packed));
 
 /* ---- Modern transport state ---- */
 static volatile void* bar_virt[6];
@@ -232,6 +258,8 @@ static int gpu_resource_id = 1;
 static uint32_t gpu_width = 0;
 static uint32_t gpu_height = 0;
 static int display_enabled = 0;
+static int gpu_virgl_enabled = 0;
+static uint32_t gpu_ctx_id = 1;
 
 static uint8_t virtio_fb[VIRTIO_FB_SIZE] __attribute__((aligned(4096)));
 
@@ -360,7 +388,7 @@ static int virtio_attach_backing(uint32_t rid, uint64_t addr, uint64_t size) {
         struct virtio_gpu_ctrl_hdr hdr;
         uint32_t resource_id;
         uint32_t nr_entries;
-        struct virtio_gpu_resource_attach_backing_entry entry;
+        struct virtio_gpu_mem_entry entry;
     } cmd;
     memset(&cmd, 0, sizeof(cmd));
     cmd.hdr.type = VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING;
@@ -379,6 +407,23 @@ static int virtio_attach_backing(uint32_t rid, uint64_t addr, uint64_t size) {
     kprint_hex64(resp.type);
     kprint("\n");
     if (sc_ret != 0) return -1;
+
+    return (resp.type == VIRTIO_GPU_RESP_OK_NODATA) ? 0 : -1;
+}
+
+static int virtio_ctx_create(uint32_t ctx_id) {
+    struct virtio_gpu_ctx_create cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.hdr.type = VIRTIO_GPU_CMD_CTX_CREATE;
+    cmd.hdr.ctx_id = ctx_id;
+    cmd.nlen = 0;
+    cmd.padding = 0;
+
+    struct virtio_gpu_ctrl_hdr resp;
+    memset(&resp, 0, sizeof(resp));
+
+    if (virtio_gpu_send_command(&cmd, sizeof(cmd), &resp, sizeof(resp)) != 0)
+        return -1;
 
     return (resp.type == VIRTIO_GPU_RESP_OK_NODATA) ? 0 : -1;
 }
@@ -407,8 +452,8 @@ static int virtio_set_scanout(uint32_t rid, uint32_t w, uint32_t h) {
     cmd.hdr.type = VIRTIO_GPU_CMD_SET_SCANOUT;
     cmd.scanout_id = 0;
     cmd.resource_id = rid;
-    cmd.width = w;
-    cmd.height = h;
+    cmd.r.width = w;
+    cmd.r.height = h;
 
     struct virtio_gpu_ctrl_hdr resp;
     memset(&resp, 0, sizeof(resp));
@@ -710,8 +755,12 @@ static int vgpu_init(void* context) {
     kprint_hex64(features);
     kprint("\n");
 
+    uint32_t drf = 0;
+    if (features & VIRTIO_GPU_F_VIRGL_BIT) {
+        kprint("[GPU-DBG] VIRGL supported but skipped (no Mesa userspace yet)\n");
+    }
     mmio_write32(common_bar, common_offset + VIRTIO_COMMON_DRF_SEL, 0);
-    mmio_write32(common_bar, common_offset + VIRTIO_COMMON_DRF, 0);
+    mmio_write32(common_bar, common_offset + VIRTIO_COMMON_DRF, drf);
 
     mmio_write8(common_bar, common_offset + VIRTIO_COMMON_STATUS,
                 VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER | VIRTIO_STATUS_FEATURES_OK);
@@ -723,6 +772,11 @@ static int vgpu_init(void* context) {
                     VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER | VIRTIO_STATUS_FEATURES_OK | VIRTIO_STATUS_FAILED);
         return -1;
     }
+
+    gpu_virgl_enabled = (drf & VIRTIO_GPU_F_VIRGL_BIT) ? 1 : 0;
+    kprint("[GPU-DBG] VIRGL enabled: ");
+    kprint_hex64(gpu_virgl_enabled);
+    kprint("\n");
 
     mmio_write16(common_bar, common_offset + VIRTIO_COMMON_Q_SEL, 0);
     uint16_t qsize = mmio_read16(common_bar, common_offset + VIRTIO_COMMON_Q_SIZE);
