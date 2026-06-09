@@ -518,7 +518,7 @@ static int ahci_rw(const ata_drive_t* drive, uint64_t lba, uint16_t sector_count
     return 0;
 }
 
-static int ahci_issue_atapi_packet(hba_port_t* port, const uint8_t packet[12], uintptr_t buffer_phys, uint32_t bytes) {
+static int ahci_issue_atapi_packet(hba_port_t* port, const uint8_t packet[12], uintptr_t buffer_phys, uint32_t bytes, int is_read) {
     if (!port || !packet || bytes == 0) return -1;
 
     for (int i = 0; i < ATA_DETECT_TIMEOUT; ++i) {
@@ -540,6 +540,7 @@ static int ahci_issue_atapi_packet(hba_port_t* port, const uint8_t packet[12], u
     hdr->ctbau = ctba_hi;
     hdr->flags = (uint16_t)(sizeof(fis_reg_h2d_t) / sizeof(uint32_t));
     hdr->flags |= (1u << 5); /* ATAPI */
+    if (is_read) hdr->flags |= (1u << 7);
     hdr->prdtl = 1;
 
     uintptr_t ctba_phys = ((uint64_t)hdr->ctbau << 32) | hdr->ctba;
@@ -559,35 +560,19 @@ static int ahci_issue_atapi_packet(hba_port_t* port, const uint8_t packet[12], u
     fis->pmport_c = 1u << 7;
     fis->command = ATA_CMD_PACKET;
     fis->device = 0xA0;
-    fis->featurel = 0;           /* PIO transfer mode */
-    fis->lba1 = (uint8_t)(bytes & 0xFFu);       /* byte count limit low */
-    fis->lba2 = (uint8_t)((bytes >> 8) & 0xFFu); /* byte count limit high */
+    fis->featurel = 1;
+    fis->lba1 = (uint8_t)(bytes & 0xFFu);
+    fis->lba2 = (uint8_t)((bytes >> 8) & 0xFFu);
 
     port->is = 0xFFFFFFFFu;
     port->ci = 1u << slot;
 
     for (int i = 0; i < ATA_DETECT_TIMEOUT; ++i) {
         if ((port->ci & (1u << slot)) == 0) break;
-        if (port->is & HBA_PxIS_TFES) {
-            kprintf("[AHCI] ATAPI TFES: tfd=0x");
-            kprint_hex64((uint64_t)port->tfd);
-            kprintf(" serr=0x");
-            kprint_hex64((uint64_t)port->serr);
-            kprintf(" cmd=0x");
-            kprint_hex64((uint64_t)port->cmd);
-            kprintf("\n");
-            return -7;
-        }
+        if (port->is & HBA_PxIS_TFES) return -7;
         if (i == ATA_DETECT_TIMEOUT - 1) return -8;
     }
-    if (port->is & HBA_PxIS_TFES) {
-        kprintf("[AHCI] ATAPI TFES2: tfd=0x");
-        kprint_hex64((uint64_t)port->tfd);
-        kprintf(" serr=0x");
-        kprint_hex64(port->serr);
-        kprintf("\n");
-        return -9;
-    }
+    if (port->is & HBA_PxIS_TFES) return -9;
     return 0;
 }
 
@@ -621,7 +606,7 @@ static int ahci_read_cd(const ata_drive_t* drive, uint32_t lba, uint8_t sector_c
         pkt[9] = 1; /* one logical 2048-byte sector */
 
         memset(dma_virt, 0, 2048);
-        int rc = ahci_issue_atapi_packet(port, pkt, dma_phys, 2048);
+        int rc = ahci_issue_atapi_packet(port, pkt, dma_phys, 2048, 1);
         if (rc != 0) {
             pmm_free_page((void*)dma_phys);
             return rc;
@@ -703,13 +688,13 @@ static void ata_scan_ahci(bool verbose) {
             if (det != AHCI_PORT_DET_PRESENT || ipm != AHCI_PORT_IPM_ACTIVE) continue;
 
             ata_drive_type_t type = ahci_probe_signature(port->sig);
-            if (type == ATA_DRIVE_NONE) {
-                kprintf("[AHCI] port %d sig=0x%x (NONE)\n", port_idx, port->sig);
-                continue;
-            }
-            kprintf("[AHCI] port %d sig=0x%x type=%d det=%d ipm=%d\n", port_idx, port->sig, type, det, ipm);
+            if (type == ATA_DRIVE_NONE) continue;
 
             if (ahci_configure_port(port) != 0) continue;
+
+            if (type == ATA_DRIVE_SATAPI) {
+                port->cmd |= (1u << 28); /* ATAPI enable (ICH9) */
+            }
 
             ata_drive_t* d = &g_drives[g_drive_count];
             memset(d, 0, sizeof(*d));

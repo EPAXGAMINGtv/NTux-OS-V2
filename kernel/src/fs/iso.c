@@ -1,6 +1,5 @@
 #include <fs/iso.h>
 
-#include <drivers/framebuffer/kprint.h>
 #include <drivers/sata/ata.h>
 #include <lib/ctype.h>
 #include <lib/string.h>
@@ -430,16 +429,8 @@ int iso_fs_mount(iso_fs_t* fs, uint8_t drive_index, uint64_t partition_lba) {
     uint32_t joliet_lba = 0, joliet_size = 0;
 
     for (uint32_t i = 0; i < 64; ++i) {
-        int sec_rc = iso_read_sector(fs, ISO_PVD_SECTOR + i, vd);
-        if (sec_rc != 0) {
-            kprintf("[iso] read sector 16+");
-            kprint_uint(i);
-            kprintf(" failed rc=");
-            kprint_int(sec_rc);
-            kprintf("\n");
-            return -1;
-        }
-        if (memcmp(&vd[1], "CD001", 5) != 0) break;
+        if (iso_read_sector(fs, ISO_PVD_SECTOR + i, vd) != 0) return -1;
+        if (vd[1] != 'C' || vd[2] != 'D' || vd[3] != '0' || vd[4] != '0' || vd[5] != '1') break;
 
         uint8_t type = vd[0];
         if (type == 0x01) {
@@ -450,7 +441,6 @@ int iso_fs_mount(iso_fs_t* fs, uint8_t drive_index, uint64_t partition_lba) {
             pvd_size = iso_rd32_le(&root[10]);
             found_pvd = 1;
         } else if (type == 0x02) {
-            // Joliet supplementary volume descriptor
             if (vd[88] == '%' && vd[89] == '/' && (vd[90] == '@' || vd[90] == 'C' || vd[90] == 'E')) {
                 const uint8_t* root = &vd[156];
                 if (root[0] >= 34) {
