@@ -152,6 +152,14 @@ int vfs_mount(const char* mount_point, const vfs_backend_ops_t* ops, void* ctx) 
     }
 
     for (size_t i = 0; i < VFS_MAX_MOUNTS; ++i) {
+        if (g_mounts[i].used && strcmp(g_mounts[i].mount_point, mount_point) == 0) {
+            g_mounts[i].ops = ops;
+            g_mounts[i].ctx = ctx;
+            return 0;
+        }
+    }
+
+    for (size_t i = 0; i < VFS_MAX_MOUNTS; ++i) {
         if (!g_mounts[i].used) {
             g_mounts[i].used = true;
             vfs_copy_string(g_mounts[i].mount_point, sizeof(g_mounts[i].mount_point), mount_point);

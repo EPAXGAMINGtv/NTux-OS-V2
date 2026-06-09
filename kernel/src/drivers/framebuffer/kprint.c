@@ -496,6 +496,13 @@ void trigger_blue_screen(uint64_t interrupt_number, uint64_t error_code) {
     kprint("Error Code: ");
     kprint_hex64(error_code);
     kprint("\n\n");
+    if (interrupt_number == 14) {
+        uint64_t cr2 = 0;
+        __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+        kprint("CR2 (fault address): ");
+        kprint_hex64(cr2);
+        kprint("\n\n");
+    }
     kprint(":( - Ein kritischer Fehler ist aufgetreten.\n");
     kprint("Das System wurde angehalten.\n\n");
     kprint("Bitte notieren Sie die Exception-Nummer\n");

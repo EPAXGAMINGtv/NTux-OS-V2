@@ -3,6 +3,7 @@
 #include <drivers/framebuffer/kprint.h>
 #include <drivers/pci/pci.h>
 #include <mm/pmm.h>
+#include <mm/hhdm.h>
 #include <lib/string.h>
 
 #define NVME_MAX_CONTROLLERS 4
@@ -110,7 +111,8 @@ static nvme_ns_entry_t g_namespaces[NVME_MAX_NAMESPACES];
 static size_t g_ns_count;
 
 static inline void* nvme_phys_to_virt(uintptr_t phys) {
-    return (void*)phys;
+    uint64_t off = hhdm_offset_get();
+    return (void*)(uintptr_t)(phys + (uintptr_t)off);
 }
 
 static volatile uint32_t* nvme_db_ptr(nvme_controller_t* c, uint16_t db_index) {

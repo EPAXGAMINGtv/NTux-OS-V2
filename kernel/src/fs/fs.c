@@ -371,7 +371,6 @@ static int fs_mount_bindings(
     if (kind != FS_KIND_ISO) {
         int score = fs_root_score_from_kind(kind);
         if (score > g_root_score) {
-            (void)vfs_mount("/", ops, fs_ctx);
             g_root_score = score;
         }
     }
