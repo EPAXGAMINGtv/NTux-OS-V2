@@ -3963,7 +3963,9 @@ void term_run_command_line(desk_window_t* tw, const char* line_in) {
             return;
         }
         if (set_bg_from_image(path) != 0) {
-            term_push_line("[err] setbg failed");
+            char errbuf[128];
+            snprintf(errbuf, sizeof(errbuf), "[err] setbg failed: %s", image_failure_reason());
+            term_push_line(errbuf);
         } else {
             char cfg[320];
             int n = snprintf(cfg, sizeof(cfg), "img:%s", path);

@@ -61,6 +61,10 @@ int image_decode_file(const char* path, int desired_channels, image_t* out) {
     return rc;
 }
 
+const char* image_failure_reason(void) {
+    return stbi_failure_reason();
+}
+
 void image_free(image_t* img) {
     if (!img || !img->data) return;
     stbi_image_free(img->data);

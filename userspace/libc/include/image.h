@@ -17,5 +17,6 @@ int image_decode_memory(const void* data, size_t len, int desired_channels, imag
 int image_decode_file_scaled(const char* path, int desired_channels, int max_w, int max_h, image_t* out);
 int image_decode_memory_scaled(const void* data, size_t len, int desired_channels, int max_w, int max_h, image_t* out);
 void image_free(image_t* img);
+const char* image_failure_reason(void);
 
 #endif
