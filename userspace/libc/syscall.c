@@ -65,6 +65,10 @@ long sys_console_claim(void) {
     return ntux_syscall3(INT80_CONSOLE_CLAIM, 0, 0, 0);
 }
 
+long sys_console_force_claim(void) {
+    return ntux_syscall3(INT80_CONSOLE_FORCE_CLAIM, 0, 0, 0);
+}
+
 long sys_task_add(const char* path) {
     return ntux_syscall3(INT80_TASK_ADD, (uint64_t)(uintptr_t)path, 0, 0);
 }

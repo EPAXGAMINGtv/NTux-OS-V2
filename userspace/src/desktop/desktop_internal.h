@@ -31,5 +31,6 @@ void desktop_window_cleanup(int idx, int kill_owner);
 void desk_term_write_for_tid(int tid, const char* s);
 void desktop_mark_dirty(void);
 void desktop_notify(const char* title, const char* body);
+void img_job_enqueue_window_image(uint64_t win_id, const char* path, int desired_channels);
 
 #endif

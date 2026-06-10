@@ -3,7 +3,9 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <image.h>
+#include <syscall.h>
 
 extern desk_window_t g_windows[DESK_MAX_WINDOWS];
 extern int g_window_count;
@@ -209,6 +211,16 @@ void window_canvas_present(desk_window_t* w) {
     desktop_mark_dirty();
 }
 
+static void img_debug_log(const char* path, int rc) {
+    char buf[512];
+    int n = snprintf(buf, sizeof(buf), "imgset path=[%s] rc=%d reason=[%s]\n",
+                     path ? path : "(null)", rc,
+                     (rc != 0) ? (image_failure_reason() ? image_failure_reason() : "?") : "ok");
+    if (n > 0 && (size_t)n < sizeof(buf)) {
+        (void)sys_fs_write_file("/tmp/img_debug", buf, (uint64_t)n);
+    }
+}
+
 void desk_window_set_image(desk_window_t* w, const char* path, int desired_channels) {
     if (!w) return;
     if (w->image_data) {
@@ -219,14 +231,17 @@ void desk_window_set_image(desk_window_t* w, const char* path, int desired_chann
     w->image_w = 0;
     w->image_h = 0;
     w->image_channels = 0;
-    if (!path || !path[0]) return;
+    if (!path || !path[0]) { img_debug_log(path, -99); return; }
     int desired = (desired_channels == 3 || desired_channels == 4) ? desired_channels : 3;
     image_t img;
-    if (image_decode_file(path, desired, &img) != 0) return;
+    int rc = image_decode_file(path, desired, &img);
+    if (rc != 0) { img_debug_log(path, rc); return; }
     if (!img.data || img.width <= 0 || img.height <= 0) {
+        img_debug_log(path, -999);
         image_free(&img);
         return;
     }
+    img_debug_log(path, 0);
     w->image_data = img.data;
     w->image_w = (uint16_t)img.width;
     w->image_h = (uint16_t)img.height;

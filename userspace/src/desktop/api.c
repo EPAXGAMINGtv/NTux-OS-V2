@@ -286,9 +286,7 @@ static void deskapi_handle_message(const window_msg_t* msg) {
             break;
         }
         case WINDOW_CMD_SET_IMAGE: {
-            desk_window_t* w = window_find_by_id(msg->id);
-            if (!w) break;
-            desk_window_set_image(w, msg->text, (int)msg->flags);
+            img_job_enqueue_window_image(msg->id, msg->text, (int)msg->flags);
             break;
         }
         case WINDOW_CMD_SET_ICON: {

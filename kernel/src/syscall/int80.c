@@ -330,6 +330,11 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = console_input_claim_or_is_current_for_current() ? 0u : (uint64_t)-1;
             return 0;
         }
+        case INT80_CONSOLE_FORCE_CLAIM: {
+            console_input_force_owner(int80_current_tid());
+            regs->rax = 0u;
+            return 0;
+        }
         case INT80_TASK_ADD: {
             const char* path = (const char*)(uintptr_t)regs->rdi;
             const char* status = 0;

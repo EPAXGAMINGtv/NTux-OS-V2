@@ -136,12 +136,6 @@ typedef struct {
 } desk_term_state_t;
 
 typedef struct {
-    int scancode;
-    char normal;
-    char shifted;
-} keymap_t;
-
-typedef struct {
     uint64_t id;
     int x;
     int y;

@@ -139,7 +139,8 @@ enum {
     IMG_JOB_BROWSER_THUMB = 2,
     IMG_JOB_WALL_THUMB = 3,
     IMG_JOB_BROWSER_PREVIEW = 4,
-    IMG_JOB_WALLPAPER = 5
+    IMG_JOB_WALLPAPER = 5,
+    IMG_JOB_WINDOW_IMAGE = 6
 };
 
 enum {
@@ -159,6 +160,8 @@ typedef struct {
     int max_h;
     char path[256];
     int browser_id;
+    uint64_t win_id;
+    int desired_channels;
 } img_job_t;
 
 #define IMG_JOB_MAX 128
@@ -198,6 +201,7 @@ static long launch_settings_tid(void);
 static long launch_browser_tid(void);
 static void open_explorer_window_at(const char* path);
 static void img_job_enqueue(uint8_t type, int idx, const char* path, int max_w, int max_h, int browser_id);
+void img_job_enqueue_window_image(uint64_t win_id, const char* path, int desired_channels);
 static void img_job_pump(void);
 static void wallpaper_queue_render(const char* path);
 static void wallpaper_job_step(uint32_t max_rows);
@@ -352,21 +356,6 @@ static const desk_theme_t g_themes[DESK_THEMES] = {
         0xFF15161Au, 0xFFDADADAu, 0xFF9A9A9Au,
         0xEE141518u, 0xFF2A2B2Fu, 0xEE15161Au, 0x55252528u
     }
-};
-
-static const keymap_t g_keys[] = {
-    {0x02, '1', '!'}, {0x03, '2', '"'}, {0x04, '3', '#'}, {0x05, '4', '$'},
-    {0x06, '5', '%'}, {0x07, '6', '&'}, {0x08, '7', '/'}, {0x09, '8', '('},
-    {0x0A, '9', ')'}, {0x0B, '0', '='}, {0x0C, '-', '_'}, {0x0D, '+', '*'},
-    {0x10, 'q', 'Q'}, {0x11, 'w', 'W'}, {0x12, 'e', 'E'}, {0x13, 'r', 'R'},
-    {0x14, 't', 'T'}, {0x15, 'y', 'Y'}, {0x16, 'u', 'U'}, {0x17, 'i', 'I'},
-    {0x18, 'o', 'O'}, {0x19, 'p', 'P'}, {0x1A, '[', '{'}, {0x1B, ']', '}'},
-    {0x1E, 'a', 'A'}, {0x1F, 's', 'S'}, {0x20, 'd', 'D'}, {0x21, 'f', 'F'},
-    {0x22, 'g', 'G'}, {0x23, 'h', 'H'}, {0x24, 'j', 'J'}, {0x25, 'k', 'K'},
-    {0x26, 'l', 'L'}, {0x27, ';', ':'}, {0x28, '\'', '"'}, {0x29, '`', '~'},
-    {0x2B, '\\', '|'}, {0x2C, 'z', 'Z'}, {0x2D, 'x', 'X'}, {0x2E, 'c', 'C'},
-    {0x2F, 'v', 'V'}, {0x30, 'b', 'B'}, {0x31, 'n', 'N'}, {0x32, 'm', 'M'},
-    {0x33, ',', '<'}, {0x34, '.', '>'}, {0x35, '/', '?'}, {0x39, ' ', ' '}
 };
 
 static uint16_t rd_u16_le(const uint8_t* p) {
@@ -5531,6 +5520,25 @@ static void img_job_enqueue(uint8_t type, int idx, const char* path, int max_w, 
     strncpy(job->path, path, sizeof(job->path) - 1);
     job->path[sizeof(job->path) - 1] = '\0';
     job->browser_id = browser_id;
+    job->win_id = 0;
+    job->desired_channels = 0;
+    g_img_job_tail = (g_img_job_tail + 1) % IMG_JOB_MAX;
+    g_img_job_count++;
+}
+
+void img_job_enqueue_window_image(uint64_t win_id, const char* path, int desired_channels) {
+    if (!path || !path[0]) return;
+    if (g_img_job_count >= IMG_JOB_MAX) return;
+    img_job_t* job = &g_img_jobs[g_img_job_tail];
+    job->type = IMG_JOB_WINDOW_IMAGE;
+    job->idx = -1;
+    job->max_w = 0;
+    job->max_h = 0;
+    strncpy(job->path, path, sizeof(job->path) - 1);
+    job->path[sizeof(job->path) - 1] = '\0';
+    job->browser_id = 0;
+    job->win_id = win_id;
+    job->desired_channels = desired_channels;
     g_img_job_tail = (g_img_job_tail + 1) % IMG_JOB_MAX;
     g_img_job_count++;
 }
@@ -5764,6 +5772,11 @@ static void img_job_pump(void) {
                     notify_push("Wallpaper", "Failed to load image");
                     g_wallpaper_notify_pending = 0;
                 }
+            }
+        } else if (job.type == IMG_JOB_WINDOW_IMAGE) {
+            desk_window_t* w = window_find_by_id(job.win_id);
+            if (w) {
+                desk_window_set_image(w, job.path, job.desired_channels);
             }
         }
 
@@ -8362,40 +8375,25 @@ static char poll_char(void) {
     if (!desktop_wants_console_input()) {
         return 0;
     }
-    if (sys_console_claim() != 0) {
+    if (sys_console_force_claim() != 0) {
         return 0;
     }
     if (now - g_last_key_tick < debounce) return 0;
+
+    if (poll_special_press(0x1C)) { g_last_key_tick = now; g_last_key_char = '\n'; desktop_mark_input(); return '\n'; }
+    if (poll_special_press(0x0E)) { g_last_key_tick = now; g_last_key_char = '\b'; desktop_mark_input(); return '\b'; }
+    if (poll_special_press(0x0F)) { g_last_key_tick = now; g_last_key_char = '\t'; desktop_mark_input(); return '\t'; }
+    if (poll_special_press(0x39)) { g_last_key_tick = now; g_last_key_char = ' '; desktop_mark_input(); return ' '; }
+
     long v = sys_getchar();
     if (v >= 0 && v <= 255) {
         char c = (char)(uint8_t)v;
-        if (c == '\r') c = '\n';
-        if (c == '\n' || c == '\t' || c == '\b' || c == 127) {
-            g_last_key_tick = now;
-            g_last_key_char = c;
-            desktop_mark_input();
-            return c;
-        }
         if (c >= 32 && c < 127) {
             if (c == g_last_key_char && now - g_last_key_tick < same_char_guard) return 0;
             g_last_key_tick = now;
             g_last_key_char = c;
             desktop_mark_input();
             return c;
-        }
-    }
-
-    if (poll_special_press(0x1C)) { g_last_key_tick = now; g_last_key_char = '\n'; return '\n'; }
-    if (poll_special_press(0x0E)) { g_last_key_tick = now; g_last_key_char = '\b'; return '\b'; }
-    if (poll_special_press(0x0F)) { g_last_key_tick = now; g_last_key_char = '\t'; return '\t'; }
-    if (poll_special_press(0x39)) { g_last_key_tick = now; g_last_key_char = ' '; return ' '; }
-
-    int shift = (sys_kbd_is_pressed(0x2A) > 0) || (sys_kbd_is_pressed(0x36) > 0);
-    for (size_t i = 0; i < sizeof(g_keys) / sizeof(g_keys[0]); ++i) {
-        if (poll_special_press(g_keys[i].scancode)) {
-            g_last_key_tick = now;
-            g_last_key_char = shift ? g_keys[i].shifted : g_keys[i].normal;
-            return g_last_key_char;
         }
     }
     return 0;
@@ -8559,11 +8557,11 @@ static void handle_terminal_input(void) {
         ts->input[ts->input_len] = '\0';
         g_desktop_dirty = 1;
     }
-    if (poll_special_press(0x0E) || c == '\b' || c == 127) {
+    if (c == '\b' || c == 127) {
         if (ts->input_len > 0) ts->input[--ts->input_len] = '\0';
         g_desktop_dirty = 1;
     }
-    if (poll_special_press(0x1C) || c == '\n' || c == '\r') {
+    if (c == '\n' || c == '\r') {
         term_run_command();
         ts->input_len = 0;
         ts->input[0] = '\0';
@@ -8716,7 +8714,7 @@ static void handle_global_hotkeys(void) {
             if (count > 0) g_start_sel = (g_start_sel - 1 + count) % count;
         } else if (poll_special_press(0x50)) {
             if (count > 0) g_start_sel = (g_start_sel + 1) % count;
-        } else if (poll_special_press(0x1C) || c == '\n') {
+        } else if (c == '\n') {
             int idx = start_menu_index_by_visible(g_start_sel);
             if (idx >= 0) {
                 if (strcmp(g_icons[idx].exec_path, "::explorer") == 0) open_explorer_window();
@@ -9739,12 +9737,12 @@ static void handle_namebox_input(void) {
             g_desktop_dirty = 1;
         }
     }
-    if (poll_special_press(0x0E) || c == '\b' || c == 127) {
+    if (c == '\b' || c == 127) {
         size_t len = strlen(g_namebox_value);
         if (len > 0) g_namebox_value[len - 1] = '\0';
         g_desktop_dirty = 1;
     }
-    if (poll_special_press(0x1C) || c == '\n' || c == '\r') {
+    if (c == '\n' || c == '\r') {
         namebox_confirm();
     } else if (poll_special_press(0x01)) {
         namebox_close();
@@ -9809,11 +9807,11 @@ void desktop_run(void) {
             }
         }
         update_focus_after_visibility_change();
+        handle_super_key();
+        handle_global_hotkeys();
         if (!desktop_wants_console_input()) {
             (void)sys_console_release();
         }
-        handle_super_key();
-        handle_global_hotkeys();
         /* installer handled externally */
         desktop_publish_input_state();
         if (sys_get_ticks() < g_boot_splash_until) {

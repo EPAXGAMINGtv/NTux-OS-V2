@@ -21,6 +21,7 @@ enum {
     INT80_CONSOLE_RELEASE = 11,
     INT80_CONSOLE_IS_FREE = 12,
     INT80_CONSOLE_CLAIM = 13,
+    INT80_CONSOLE_FORCE_CLAIM = 14,
     INT80_TASK_ADD = 20,
     INT80_TASK_LIST = 21,
     INT80_SET_UID = 22,
@@ -210,6 +211,7 @@ long sys_yield(void);
 long sys_console_release(void);
 long sys_console_is_free(void);
 long sys_console_claim(void);
+long sys_console_force_claim(void);
 long sys_task_add(const char* path);
 long sys_task_add_module(const char* token);
 long sys_get_tid(void);
