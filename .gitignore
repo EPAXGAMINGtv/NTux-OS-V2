@@ -16,3 +16,6 @@ out/
 *.img
 qemu_debug.txt
 qemu_full.log
+userspace/bin/
+userspace/obj/
+userspace/*.elf
