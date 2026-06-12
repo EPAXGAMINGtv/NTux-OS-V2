@@ -5622,6 +5622,138 @@ static void wallpaper_job_step(uint32_t max_rows) {
     g_desktop_dirty = 1;
 }
 
+#define IMGDECODE_PENDING_MAX 8
+typedef struct {
+    int active;
+    int type;
+    int idx;
+    int browser_id;
+    int max_w, max_h;
+    char path[256];
+    char return_file[64];
+    uint64_t start_tick;
+} imgdecode_pending_t;
+static imgdecode_pending_t g_imgdecode_pending[IMGDECODE_PENDING_MAX];
+static int g_imgdecode_next_id = 0;
+
+static int imgdecode_launch(imgdecode_pending_t* p) {
+    if (!p->active) return -1;
+    snprintf(p->return_file, sizeof(p->return_file), "/tmp/imgdecode_res.%d", g_imgdecode_next_id++);
+    if (g_imgdecode_next_id > 999999) g_imgdecode_next_id = 0;
+
+    char req[512];
+    int n = snprintf(req, sizeof(req), "0\n%s\n3\n%d\n%d\n%s\n",
+        p->path, p->max_w, p->max_h, p->return_file);
+    if (n <= 0 || (size_t)n >= sizeof(req)) { p->active = 0; return -1; }
+
+    if (sys_fs_write_file("/tmp/imgdecode_req", req, (uint64_t)n) != 0 &&
+        sys_fs_create_file("/tmp", "imgdecode_req", req, (uint64_t)n) != 0) {
+        p->active = 0;
+        return -1;
+    }
+
+    long tid = sys_task_add("/boot/modules/imgdecode.elf");
+    if (tid < 0) {
+        (void)sys_fs_remove("/tmp/imgdecode_req");
+        p->active = 0;
+        return -1;
+    }
+
+    p->start_tick = sys_get_ticks();
+    return 0;
+}
+
+static void imgdecode_check_pending(void) {
+    for (int i = 0; i < IMGDECODE_PENDING_MAX; ++i) {
+        imgdecode_pending_t* p = &g_imgdecode_pending[i];
+        if (!p->active) continue;
+
+        uint64_t len = 0;
+        if (sys_fs_read_file(p->return_file, 0, 0, &len) != 0) {
+            if (sys_get_ticks() - p->start_tick > 500) {
+                p->active = 0;
+            }
+            continue;
+        }
+
+        char* buf = (char*)malloc((size_t)(len + 1));
+        if (!buf) { p->active = 0; continue; }
+        if (sys_fs_read_file(p->return_file, buf, len, &len) != 0) {
+            free(buf);
+            p->active = 0;
+            continue;
+        }
+        (void)sys_fs_remove(p->return_file);
+        buf[len] = '\0';
+
+        char* line = buf;
+        char* next = strchr(line, '\n');
+        if (!next) { free(buf); p->active = 0; continue; }
+        *next = '\0';
+        int w = atoi(line); line = next + 1;
+
+        next = strchr(line, '\n');
+        if (!next) { free(buf); p->active = 0; continue; }
+        *next = '\0';
+        int h = atoi(line); line = next + 1;
+
+        next = strchr(line, '\n');
+        if (!next) { free(buf); p->active = 0; continue; }
+        *next = '\0';
+        int ch = atoi(line); line = next + 1;
+
+        size_t header = (size_t)(line - buf);
+        size_t pixel_bytes = len - header;
+        size_t expected = (size_t)w * (size_t)h * (size_t)ch;
+        if (pixel_bytes < expected) {
+            free(buf);
+            p->active = 0;
+            continue;
+        }
+
+        uint8_t* pixels = (uint8_t*)malloc(pixel_bytes);
+        if (!pixels) { free(buf); p->active = 0; continue; }
+        memcpy(pixels, line, pixel_bytes);
+
+        if (p->type == IMG_JOB_BROWSER_THUMB) {
+            desk_browser_state_t* st = browser_state_get(p->browser_id);
+            if (st && p->idx >= 0 && p->idx < st->count) {
+                desk_thumb_t* t = &st->thumbs[p->idx];
+                if (!t->loading) { p->active = 0; continue; }
+                if (t->pixels) free(t->pixels);
+                strncpy(t->path, p->path, sizeof(t->path) - 1);
+                t->path[sizeof(t->path) - 1] = '\0';
+                t->pixels = pixels;
+                t->w = w;
+                t->h = h;
+                t->ready = 1;
+                t->failed = 0;
+                t->loading = 0;
+                pixels = 0;
+                g_desktop_dirty = 1;
+            }
+        } else if (p->type == IMG_JOB_BROWSER_PREVIEW) {
+            desk_browser_state_t* st = browser_state_get(p->browser_id);
+            if (st && strcmp(st->preview_path, p->path) == 0 && st->preview_loading) {
+                browser_preview_clear(st);
+                st->preview = pixels;
+                st->preview_w = w;
+                st->preview_h = h;
+                st->preview_ready = 1;
+                st->preview_loading = 0;
+                strncpy(st->preview_path, p->path, sizeof(st->preview_path) - 1);
+                st->preview_path[sizeof(st->preview_path) - 1] = '\0';
+                pixels = 0;
+                g_desktop_dirty = 1;
+            }
+        }
+
+        if (pixels) free(pixels);
+        free(buf);
+        p->active = 0;
+    }
+}
+
 static void img_job_pump(void) {
     if (g_img_job_count <= 0) return;
     uint64_t hz = (uint64_t)sys_get_timer_hz();
@@ -5665,20 +5797,25 @@ static void img_job_pump(void) {
                 if (strcmp(full, job.path) != 0) {
                     t->loading = 0;
                 } else {
-                    image_t img;
-                    if (image_decode_file_scaled(job.path, 3, job.max_w, job.max_h, &img) == 0 &&
-                        img.data && img.width > 0 && img.height > 0) {
-                        if (t->pixels) free(t->pixels);
-                        strncpy(t->path, job.path, sizeof(t->path) - 1);
-                        t->path[sizeof(t->path) - 1] = '\0';
-                        t->pixels = img.data;
-                        t->w = img.width;
-                        t->h = img.height;
-                        t->ready = 1;
-                        t->failed = 0;
-                        t->loading = 0;
-                        img.data = 0;
-                        g_desktop_dirty = 1;
+                    int slot = -1;
+                    for (int s = 0; s < IMGDECODE_PENDING_MAX; ++s) {
+                        if (!g_imgdecode_pending[s].active) { slot = s; break; }
+                    }
+                    if (slot >= 0) {
+                        imgdecode_pending_t* p = &g_imgdecode_pending[slot];
+                        memset(p, 0, sizeof(*p));
+                        p->active = 1;
+                        p->type = IMG_JOB_BROWSER_THUMB;
+                        p->idx = job.idx;
+                        p->browser_id = job.browser_id;
+                        p->max_w = job.max_w;
+                        p->max_h = job.max_h;
+                        strncpy(p->path, job.path, sizeof(p->path) - 1);
+                        p->path[sizeof(p->path) - 1] = '\0';
+                        if (imgdecode_launch(p) != 0) {
+                            t->failed = 1;
+                            t->loading = 0;
+                        }
                     } else {
                         t->failed = 1;
                         t->loading = 0;
@@ -5714,22 +5851,27 @@ static void img_job_pump(void) {
         } else if (job.type == IMG_JOB_BROWSER_PREVIEW) {
             desk_browser_state_t* st = browser_state_get(job.browser_id);
             if (!st) continue;
-            if (strcmp(st->preview_path, job.path) != 0 && st->preview_ready) {
+            if (strcmp(st->preview_path, job.path) != 0) {
                 st->preview_loading = 0;
             } else {
-                image_t img;
-                if (image_decode_file_scaled(job.path, 3, job.max_w, job.max_h, &img) == 0 &&
-                    img.data && img.width > 0 && img.height > 0) {
-                    browser_preview_clear(st);
-                    st->preview = img.data;
-                    st->preview_w = img.width;
-                    st->preview_h = img.height;
-                    st->preview_ready = 1;
-                    st->preview_loading = 0;
-                    strncpy(st->preview_path, job.path, sizeof(st->preview_path) - 1);
-                    st->preview_path[sizeof(st->preview_path) - 1] = '\0';
-                    img.data = 0;
-                    g_desktop_dirty = 1;
+                int slot = -1;
+                for (int s = 0; s < IMGDECODE_PENDING_MAX; ++s) {
+                    if (!g_imgdecode_pending[s].active) { slot = s; break; }
+                }
+                if (slot >= 0) {
+                    imgdecode_pending_t* p = &g_imgdecode_pending[slot];
+                    memset(p, 0, sizeof(*p));
+                    p->active = 1;
+                    p->type = IMG_JOB_BROWSER_PREVIEW;
+                    p->idx = -1;
+                    p->browser_id = job.browser_id;
+                    p->max_w = job.max_w;
+                    p->max_h = job.max_h;
+                    strncpy(p->path, job.path, sizeof(p->path) - 1);
+                    p->path[sizeof(p->path) - 1] = '\0';
+                    if (imgdecode_launch(p) != 0) {
+                        st->preview_loading = 0;
+                    }
                 } else {
                     st->preview_loading = 0;
                 }
@@ -9792,6 +9934,7 @@ void desktop_run(void) {
         notify_update((float)dt);
         wallpaper_update((float)dt);
         img_job_pump();
+        imgdecode_check_pending();
         wallpaper_job_step(24u + (uint32_t)dt * 4u);
 
         handle_mouse();

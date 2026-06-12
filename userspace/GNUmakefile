@@ -46,6 +46,7 @@ BASE_BROWSER := 0x56000000
 BASE_PAINT := 0x59000000
 BASE_SCREENSAVER := 0x5C000000
 BASE_CALC := 0x5F000000
+BASE_IMGDECODE := 0x62000000
 
 
 LDFLAGS_DESKTOP := $(LDFLAGS) --defsym=USER_BASE=$(BASE_DESKTOP)
@@ -80,6 +81,7 @@ LDFLAGS_BROWSER := $(LDFLAGS) --defsym=USER_BASE=$(BASE_BROWSER)
 LDFLAGS_PAINT := $(LDFLAGS) --defsym=USER_BASE=$(BASE_PAINT)
 LDFLAGS_SCREENSAVER := $(LDFLAGS) --defsym=USER_BASE=$(BASE_SCREENSAVER)
 LDFLAGS_CALC := $(LDFLAGS) --defsym=USER_BASE=$(BASE_CALC)
+LDFLAGS_IMGDECODE := $(LDFLAGS) --defsym=USER_BASE=$(BASE_IMGDECODE)
 
 
 OUT_DIR := bin
@@ -109,6 +111,7 @@ EXPLORER_SRC := src/explorer/explorer.c
 EDITOR_SRC := src/editor/editor.c
 BENCH_SRC := src/bench/bench.c
 IMGVIEW_SRC := src/imgview/imgview.c
+IMGDECODE_SRC := src/imgdecode/imgdecode.c
 OBJVIEW_SRC := src/objview/objview.c
 FLAPPY_SRC := src/flappy/flappy.c
 XEYES_SRC := src/xeyes/xeyes.c
@@ -275,6 +278,7 @@ TCC_ALL_SRC := $(RUNTIME_SRC) $(TCC_SRC)
 BROWSER_ALL_SRC := $(RUNTIME_SRC) $(BROWSER_SRC)
 PAINT_ALL_SRC := $(RUNTIME_SRC) $(PAINT_SRC)
 CALC_ALL_SRC := $(RUNTIME_SRC) $(CALC_SRC)
+IMGDECODE_ALL_SRC := $(RUNTIME_SRC) $(IMGDECODE_SRC)
 
 HELLO_OBJ := $(patsubst %.c,$(OBJ_DIR)/hello/%.o,$(filter %.c,$(HELLO_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/hello/%.o,$(filter %.cpp,$(HELLO_ALL_SRC)))
 INSTALLER_OBJ := $(patsubst %.c,$(OBJ_DIR)/installer/%.o,$(filter %.c,$(INSTALLER_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/installer/%.o,$(filter %.cpp,$(INSTALLER_ALL_SRC)))
@@ -309,6 +313,11 @@ BROWSER_OBJ := $(patsubst %.c,$(OBJ_DIR)/browser/%.o,$(filter %.c,$(BROWSER_ALL_
 PAINT_OBJ := $(patsubst %.c,$(OBJ_DIR)/paint/%.o,$(filter %.c,$(PAINT_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/paint/%.o,$(filter %.cpp,$(PAINT_ALL_SRC)))
 CALC_OBJ := $(patsubst %.c,$(OBJ_DIR)/calc/%.o,$(filter %.c,$(CALC_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/calc/%.o,$(filter %.cpp,$(CALC_ALL_SRC)))
 
+IMGDECODE_OBJ := $(patsubst %.c,$(OBJ_DIR)/imgdecode/%.o,$(filter %.c,$(IMGDECODE_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/imgdecode/%.o,$(filter %.cpp,$(IMGDECODE_ALL_SRC)))
+
+
+
+
 TCC_OUT_DIR := $(OUT_DIR)/tcc
 TCC_LIB_DIR := $(TCC_OUT_DIR)/lib
 TCC_INC_DIR := $(TCC_OUT_DIR)/include
@@ -325,7 +334,7 @@ TCC_INCLUDE_STAMP := $(TCC_INC_DIR)/.stamp
 
 .PHONY: all clean
 
-ALL_TARGETS := $(OUT_DIR)/hello.elf $(OUT_DIR)/konsole.elf $(OUT_DIR)/hellokonsole.elf $(OUT_DIR)/installer.elf $(OUT_DIR)/installer_term.elf $(OUT_DIR)/desktop.elf $(OUT_DIR)/terminal.elf $(OUT_DIR)/deskdemo.elf $(OUT_DIR)/screensaver.elf $(OUT_DIR)/login.elf $(OUT_DIR)/doom.elf $(OUT_DIR)/epaxfetch.elf $(OUT_DIR)/tetris.elf $(OUT_DIR)/taskmgr.elf $(OUT_DIR)/deskconsole.elf $(OUT_DIR)/explorer.elf $(OUT_DIR)/editor.elf $(OUT_DIR)/bench.elf $(OUT_DIR)/imgview.elf $(OUT_DIR)/objview.elf $(OUT_DIR)/flappy.elf $(OUT_DIR)/xeyes.elf $(OUT_DIR)/settings.elf $(OUT_DIR)/partutil.elf $(OUT_DIR)/test.elf $(OUT_DIR)/snake.elf $(OUT_DIR)/healthcheck.elf $(OUT_DIR)/lua.elf $(OUT_DIR)/tcc.elf $(OUT_DIR)/browser.elf $(OUT_DIR)/paint.elf $(OUT_DIR)/calc.elf $(OUT_DIR)/ntuxpkg.elf $(TCC_LIBC_A) $(TCC_LIBTCC1_A) $(TCC_CRT1_OBJ) $(TCC_CRTI_OBJ) $(TCC_CRTN_OBJ) $(TCC_INCLUDE_STAMP)
+ALL_TARGETS := $(OUT_DIR)/hello.elf $(OUT_DIR)/konsole.elf $(OUT_DIR)/hellokonsole.elf $(OUT_DIR)/installer.elf $(OUT_DIR)/installer_term.elf $(OUT_DIR)/desktop.elf $(OUT_DIR)/terminal.elf $(OUT_DIR)/deskdemo.elf $(OUT_DIR)/screensaver.elf $(OUT_DIR)/login.elf $(OUT_DIR)/doom.elf $(OUT_DIR)/epaxfetch.elf $(OUT_DIR)/tetris.elf $(OUT_DIR)/taskmgr.elf $(OUT_DIR)/deskconsole.elf $(OUT_DIR)/explorer.elf $(OUT_DIR)/editor.elf $(OUT_DIR)/bench.elf $(OUT_DIR)/imgview.elf $(OUT_DIR)/objview.elf $(OUT_DIR)/flappy.elf $(OUT_DIR)/xeyes.elf $(OUT_DIR)/settings.elf $(OUT_DIR)/partutil.elf $(OUT_DIR)/test.elf $(OUT_DIR)/snake.elf $(OUT_DIR)/healthcheck.elf $(OUT_DIR)/lua.elf $(OUT_DIR)/tcc.elf $(OUT_DIR)/browser.elf $(OUT_DIR)/paint.elf $(OUT_DIR)/calc.elf $(OUT_DIR)/imgdecode.elf $(OUT_DIR)/ntuxpkg.elf $(TCC_LIBC_A) $(TCC_LIBTCC1_A) $(TCC_CRT1_OBJ) $(TCC_CRTI_OBJ) $(TCC_CRTN_OBJ) $(TCC_INCLUDE_STAMP)
 ifeq ($(HAS_CXX),1)
 ALL_TARGETS += $(OUT_DIR)/cpphello.elf
 endif
@@ -465,6 +474,10 @@ $(OUT_DIR)/calc.elf: $(CALC_OBJ) linker.ld
 	@mkdir -p $(OUT_DIR)
 	$(LD) $(LDFLAGS_CALC) $(CALC_OBJ) -o $@
 
+$(OUT_DIR)/imgdecode.elf: $(IMGDECODE_OBJ) linker.ld
+	@mkdir -p $(OUT_DIR)
+	$(LD) $(LDFLAGS_IMGDECODE) $(IMGDECODE_OBJ) -o $@
+
 # ntuxpkg — external submodule (standalone build)
 NTUXPKG_DIR := ntuxpkg
 $(OUT_DIR)/ntuxpkg.elf: $(NTUXPKG_DIR)/GNUmakefile $(wildcard $(NTUXPKG_DIR)/src/*) $(wildcard $(NTUXPKG_DIR)/libc/*)
@@ -531,6 +544,10 @@ $(OBJ_DIR)/paint/%.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
 
 $(OBJ_DIR)/calc/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/imgdecode/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 

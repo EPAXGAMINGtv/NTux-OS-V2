@@ -216,6 +216,7 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 	cp -v userspace/bin/healthcheck.elf iso_root/boot/modules/healthcheck.elf
 	cp -v userspace/bin/paint.elf iso_root/boot/modules/paint.elf
 	cp -v userspace/bin/calc.elf iso_root/boot/modules/calc.elf
+	cp -v userspace/bin/imgdecode.elf iso_root/boot/modules/imgdecode.elf
 	cp -v userspace/bin/ntuxpkg.elf iso_root/boot/modules/ntuxpkg.elf
 	cp -v userspace/bin/snake.elf iso_root/boot/modules/snake.elf
 	cp -v userspace/bin/lua.elf iso_root/boot/modules/lua.elf

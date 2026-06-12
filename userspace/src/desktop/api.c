@@ -1,5 +1,6 @@
 #include "api.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <syscall.h>
@@ -286,7 +287,16 @@ static void deskapi_handle_message(const window_msg_t* msg) {
             break;
         }
         case WINDOW_CMD_SET_IMAGE: {
-            img_job_enqueue_window_image(msg->id, msg->text, (int)msg->flags);
+            char buf[512];
+            int n = snprintf(buf, sizeof(buf), "%llx\n%s\n%d",
+                (unsigned long long)msg->id, msg->text, (int)msg->flags);
+            if (n > 0 && (size_t)n < sizeof(buf)) {
+                if (sys_fs_write_file("/tmp/imgdecode_req", buf, (uint64_t)n) == 0) {
+                    (void)sys_task_add("/boot/modules/imgdecode.elf");
+                } else if (sys_fs_create_file("/tmp", "imgdecode_req", buf, (uint64_t)n) == 0) {
+                    (void)sys_task_add("/boot/modules/imgdecode.elf");
+                }
+            }
             break;
         }
         case WINDOW_CMD_SET_ICON: {
