@@ -29,6 +29,7 @@ clock_t clock(void);
 double difftime(time_t time1, time_t time0);
 struct tm *gmtime(const time_t *timep);
 struct tm *localtime(const time_t *timep);
+time_t mktime(struct tm *tm);
 size_t strftime(char *s, size_t max, const char *format, const struct tm *tm);
 
 #ifdef __cplusplus

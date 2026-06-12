@@ -4,7 +4,7 @@
 
 #define ELF_PT_LOAD 1u
 #define ELF_MAX_PHNUM 128u
-#define NTUX_USER_VADDR_MAX 0x20000000ull
+#define NTUX_USER_VADDR_MAX 0x80000000ull
 
 static inline int is_valid_elf(const Elf64_Ehdr *ehdr)
 {

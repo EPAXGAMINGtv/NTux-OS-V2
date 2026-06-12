@@ -29,6 +29,7 @@ char *realpath(const char *path, char *resolved);
 int system(const char *cmd);
 void abort(void);
 void exit(int code);
+int atexit(void (*function)(void));
 int putenv(const char *string);
 void qsort(void *base, size_t nmemb, size_t size,
            int (*compar)(const void *, const void *));

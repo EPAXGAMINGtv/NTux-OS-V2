@@ -14,5 +14,7 @@ int ispunct(int c);
 int isprint(int c);
 int tolower(int c);
 int toupper(int c);
+int isascii(int c);
+int isblank(int c);
 
 #endif

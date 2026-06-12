@@ -32,6 +32,7 @@
 #define EPIPE   32
 #define ERANGE  34
 #define ENOSYS  38
+#define EILSEQ 84
 #define EWOULDBLOCK EAGAIN
 #define EINPROGRESS 115
 #define ENOTSOCK 88

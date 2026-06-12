@@ -212,6 +212,7 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 	cp -v userspace/bin/settings.elf iso_root/boot/modules/settings.elf
 	cp -v userspace/bin/partutil.elf iso_root/boot/modules/partutil.elf
 	cp -v userspace/bin/browser.elf iso_root/boot/modules/browser.elf
+	cp -v userspace/bin/netsurf.elf iso_root/boot/modules/netsurf.elf
 	cp -v userspace/bin/test.elf iso_root/boot/modules/test.elf
 	cp -v userspace/bin/healthcheck.elf iso_root/boot/modules/healthcheck.elf
 	cp -v userspace/bin/paint.elf iso_root/boot/modules/paint.elf
