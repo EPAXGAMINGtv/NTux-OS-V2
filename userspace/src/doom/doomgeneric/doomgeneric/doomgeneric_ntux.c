@@ -210,11 +210,14 @@ static int doom_main(int argc, char **argv) {
 
     if (argc <= 1 || argv == 0) {
         const char* iwad = "/boot/DOOM1.WAD";
-        if (sys_fs_exists("/boot/DOOM1.WAD") > 0) {
-            iwad = "/boot/DOOM1.WAD";
-        } else if (sys_fs_exists("/boot/doom1.wad") > 0) {
-            iwad = "/boot/doom1.wad";
-        } else if (sys_fs_exists("/boot/DOOM.WAD") > 0) {
+        if (sys_fs_exists("/fat0/DOOM1.WAD") > 0) {
+            iwad = "/fat0/DOOM1.WAD";
+        } else if (sys_fs_exists("/fat0/doom1.wad") > 0) {
+            iwad = "/fat0/doom1.wad";
+        }else if (sys_fs_exists("/iso0/doom1.wad") > 0) {
+            iwad = "/iso0/doom1.wad";
+        }
+        else if (sys_fs_exists("/boot/DOOM.WAD") > 0) {
             iwad = "/boot/DOOM.WAD";
         } else if (sys_fs_exists("/boot/doom.wad") > 0) {
             iwad = "/boot/doom.wad";
@@ -264,7 +267,7 @@ void ntux_user_entry(void) {
             (void)window_set_icon(g_win_id, "/boot/res/icons/doom.bmp");
             (void)window_show(g_win_id, 1);
             window_focus(g_win_id);
-            g_use_window = 1;
+            g_use_window = 0;
         }
     }
     (void)doom_main(0, 0);
