@@ -478,9 +478,15 @@ $(OUT_DIR)/imgdecode.elf: $(IMGDECODE_OBJ) linker.ld
 	@mkdir -p $(OUT_DIR)
 	$(LD) $(LDFLAGS_IMGDECODE) $(IMGDECODE_OBJ) -o $@
 
-# ntuxpkg — external submodule (standalone build)
+# ntuxpkg — external repo (cloned on demand)
 NTUXPKG_DIR := ntuxpkg
-$(OUT_DIR)/ntuxpkg.elf: $(NTUXPKG_DIR)/GNUmakefile $(wildcard $(NTUXPKG_DIR)/src/*) $(wildcard $(NTUXPKG_DIR)/libc/*)
+NTUXPKG_URL := https://github.com/EPAXGAMINGtv/NTux-OS-pkg-mgr-cli.git
+
+$(NTUXPKG_DIR)/GNUmakefile:
+	@echo "Cloning ntuxpkg from $(NTUXPKG_URL)..."
+	git clone --depth=1 $(NTUXPKG_URL) $(NTUXPKG_DIR)
+
+$(OUT_DIR)/ntuxpkg.elf: $(NTUXPKG_DIR)/GNUmakefile
 	@mkdir -p $(OUT_DIR)
 	$(MAKE) -C $(NTUXPKG_DIR)
 	cp $(NTUXPKG_DIR)/out/ntuxpkg.elf $@
@@ -741,4 +747,4 @@ $(OBJ_DIR)/installer_term/src/installer/installer_term.o: src/installer/installe
 	$(CC) $(CFLAGS) -O1 -fno-inline -fno-omit-frame-pointer -march=x86-64 -mno-mmx -mno-sse -mno-sse2 -fno-tree-vectorize $(CPPFLAGS) -c $< -o $@
 
 clean:
-	rm -rf $(OUT_DIR) $(OBJ_DIR)
+	rm -rf $(OUT_DIR) $(OBJ_DIR) $(NTUXPKG_DIR)

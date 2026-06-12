@@ -186,11 +186,7 @@ int getchar(void) {
 }
 
 int puts(const char *text) {
-    if (!text) return -1;
-    size_t len = strlen(text);
-    if (stdio_write(text, len) < 0) return -1;
-    if (putchar('\n') < 0) return -1;
-    return (int)(len + 1u);
+    printf(text,"\n");
 }
 
 size_t readline(char *buf, size_t cap) {

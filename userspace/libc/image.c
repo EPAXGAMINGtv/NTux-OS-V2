@@ -11,7 +11,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-#define IMAGE_MAX_FILE_BYTES (64ull * 1024ull * 1024ull)
+#define IMAGE_MAX_FILE_BYTES (128ull * 1024ull * 1024ull)
 
 int image_decode_memory(const void* data, size_t len, int desired_channels, image_t* out) {
     if (!out) return -1;
