@@ -332,7 +332,7 @@ static void fs_ensure_linux_dirs(void) {
         "/bin"
     };
     for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); ++i) {
-        (void)vfs_mkdir(dirs[i]);
+        (void)vfs_mkdir(dirs[i], 0755);
     }
 }
 
@@ -1053,21 +1053,25 @@ uint32_t fs_mount_generation(void) {
 }
 
 int fs_mkdir(const char* path, const char* name) {
+    return fs_mkdir_mode(path, name, 0);
+}
+
+int fs_mkdir_mode(const char* path, const char* name, uint16_t mode) {
     char full[VFS_MAX_PATH];
-    if (fs_build_child_path(path, name, full) != 0) {
-        return -1;
-    }
-    int rc = vfs_mkdir(full);
+    if (fs_build_child_path(path, name, full) != 0) return -1;
+    int rc = vfs_mkdir(full, mode);
     if (rc == 0 && fs_should_persist_path(full)) fs_persist_save_ramfs();
     return rc;
 }
 
 int fs_create_file(const char* path, const char* name, const void* data, size_t len) {
+    return fs_create_file_mode(path, name, 0, data, len);
+}
+
+int fs_create_file_mode(const char* path, const char* name, uint16_t mode, const void* data, size_t len) {
     char full[VFS_MAX_PATH];
-    if (fs_build_child_path(path, name, full) != 0) {
-        return -1;
-    }
-    int rc = vfs_create_file(full, data, len);
+    if (fs_build_child_path(path, name, full) != 0) return -1;
+    int rc = vfs_create_file(full, mode, data, len);
     if (rc == 0 && fs_should_persist_path(full)) fs_persist_save_ramfs();
     return rc;
 }

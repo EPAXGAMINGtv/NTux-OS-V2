@@ -7,6 +7,7 @@
 #include <image.h>
 #include <window.h>
 #include <font8x8_basic.h>
+#include <ttf.h>
 
 #include "desktop_defs.h"
 #include "cursor.h"
@@ -30,6 +31,61 @@ desk_window_t g_windows[DESK_MAX_WINDOWS];
 int g_window_count = 0;
 int g_focus_index = -1;
 
+
+#define FONT_CACHE_CHARS 128
+#define FONT_PX_SIZE 14
+
+typedef struct {
+    uint8_t* bitmap;
+    int w, h;
+    int bearing_x, bearing_y;
+    int advance_x;
+} font_cache_entry_t;
+
+static font_cache_entry_t g_font_cache[FONT_CACHE_CHARS];
+static int g_font_line_height = 10;
+static int g_font_ascent = 8;
+static ttf_font_t* g_ttf_font = 0;
+
+static int font_cache_load(const char* path, int px_size) {
+    uint64_t fsize = 0;
+    if (sys_fs_exists(path) <= 0) return -1;
+    char* buf = 0;
+    fsize = 4096 * 1024;
+    buf = (char*)malloc(fsize);
+    if (!buf) return -1;
+    uint64_t actual = 0;
+    if (sys_fs_read_file(path, buf, fsize, &actual) != 0 || actual == 0) {
+        free(buf); return -1;
+    }
+    g_ttf_font = ttf_load(buf, (size_t)actual);
+    free(buf);
+    if (!g_ttf_font) return -1;
+    int lh = ttf_get_height(g_ttf_font, px_size);
+    if (lh < 4) lh = 4;
+    g_font_line_height = lh;
+    g_font_ascent = ttf_get_ascender(g_ttf_font, px_size);
+
+    for (int i = 32; i < 127; ++i) {
+        uint8_t idx = (uint8_t)i;
+        ttf_glyph_t* g = ttf_render_glyph(g_ttf_font, (uint32_t)i, px_size);
+        if (g) {
+            font_cache_entry_t* e = &g_font_cache[idx];
+            e->w = g->width;
+            e->h = g->height;
+            e->bearing_x = g->lsb;
+            e->bearing_y = g->bearing_y - g->height;
+            e->advance_x = g->advance_x;
+            if (g->bitmap && g->width > 0 && g->height > 0) {
+                int sz = g->width * g->height;
+                e->bitmap = (uint8_t*)malloc((size_t)sz);
+                if (e->bitmap) memcpy(e->bitmap, g->bitmap, (size_t)sz);
+            }
+            ttf_free_glyph(g);
+        }
+    }
+    return 0;
+}
 
 static int g_dragging = 0;
 static int g_drag_index = -1;
@@ -391,7 +447,8 @@ static void draw_settings_window(const desk_window_t* w);
 static desk_term_state_t* term_state_for_window(const desk_window_t* w);
 static desk_term_state_t* term_state_active(void);
 static void term_push_line(const char* s);
-static void term_push_line_state(desk_term_state_t* ts, const char* s);
+static void term_push_line_color(const char* s, uint32_t color);
+static void term_push_line_state(desk_term_state_t* ts, const char* s, uint32_t color);
 static void notify_push(const char* title, const char* body);
 static void notify_update(float dt);
 static void draw_notifications(void);
@@ -1075,10 +1132,31 @@ static void desktop_publish_input_state(void) {
 
 static void draw_char(int x, int y, char ch, uint32_t color) {
     uint8_t idx = (uint8_t)ch;
-    for (int row = 0; row < 8; ++row) {
-        uint8_t bits = font8x8_basic[idx][row];
-        for (int col = 0; col < 8; ++col) {
-            if (bits & (1u << col)) put_px(x + col, y + row, color);
+    if (g_ttf_font && idx >= 32 && idx < 127) {
+        font_cache_entry_t* e = &g_font_cache[idx];
+        if (e->bitmap && e->w > 0 && e->h > 0) {
+            int px = x + e->bearing_x;
+            int py = y + e->bearing_y;
+            for (int row = 0; row < e->h; ++row) {
+                for (int col = 0; col < e->w; ++col) {
+                    if (e->bitmap[row * e->w + col])
+                        put_px(px + col, py + row, color);
+                }
+            }
+        } else {
+            for (int row = 0; row < 8; ++row) {
+                uint8_t bits = font8x8_basic[idx][row];
+                for (int col = 0; col < 8; ++col) {
+                    if (bits & (1u << col)) put_px(x + col, y + row, color);
+                }
+            }
+        }
+    } else {
+        for (int row = 0; row < 8; ++row) {
+            uint8_t bits = font8x8_basic[idx][row];
+            for (int col = 0; col < 8; ++col) {
+                if (bits & (1u << col)) put_px(x + col, y + row, color);
+            }
         }
     }
 }
@@ -1121,12 +1199,16 @@ void draw_text(int x, int y, const char* s, uint32_t c) {
     int cx = x;
     for (size_t i = 0; s && s[i]; ++i) {
         if (s[i] == '\n') {
-            y += 10;
+            y += g_font_line_height;
             cx = x;
             continue;
         }
         draw_char(cx, y, s[i], c);
-        cx += 8;
+        uint8_t idx = (uint8_t)s[i];
+        if (g_ttf_font && idx >= 32 && idx < 127 && g_font_cache[idx].advance_x > 0)
+            cx += g_font_cache[idx].advance_x;
+        else
+            cx += 8;
     }
 }
 
@@ -2666,24 +2748,32 @@ static void desktop_check_installer_request(void) {
 }
 #endif
 
-static void term_push_line_state(desk_term_state_t* ts, const char* s) {
+static void term_push_line_state(desk_term_state_t* ts, const char* s, uint32_t color) {
     if (!ts || !s) return;
     if (ts->line_count < DESK_TERM_LINES) {
         strncpy(ts->lines[ts->line_count], s, DESK_TERM_COLS);
         ts->lines[ts->line_count][DESK_TERM_COLS] = '\0';
+        ts->line_colors[ts->line_count] = color;
         ts->line_count++;
         return;
     }
     for (int i = 1; i < DESK_TERM_LINES; ++i) {
         memcpy(ts->lines[i - 1], ts->lines[i], DESK_TERM_COLS + 1);
+        ts->line_colors[i - 1] = ts->line_colors[i];
     }
     strncpy(ts->lines[DESK_TERM_LINES - 1], s, DESK_TERM_COLS);
     ts->lines[DESK_TERM_LINES - 1][DESK_TERM_COLS] = '\0';
+    ts->line_colors[DESK_TERM_LINES - 1] = color;
 }
 
 static void term_push_line(const char* s) {
     desk_term_state_t* ts = g_term_exec_state ? g_term_exec_state : term_state_active();
-    term_push_line_state(ts, s);
+    term_push_line_state(ts, s, 0xFFBFD0FFu);
+}
+
+static void term_push_line_color(const char* s, uint32_t color) {
+    desk_term_state_t* ts = g_term_exec_state ? g_term_exec_state : term_state_active();
+    term_push_line_state(ts, s, color);
 }
 
 static void term_push_multiline(const char* s) {
@@ -2702,6 +2792,29 @@ static void term_push_multiline(const char* s) {
         if (li + 1 >= (size_t)sizeof(line)) {
             line[li] = '\0';
             term_push_line(line);
+            li = 0;
+        }
+        if (c == '\r') continue;
+        line[li++] = c;
+    }
+}
+
+static void term_push_multiline_color(const char* s, uint32_t color) {
+    char line[DESK_TERM_COLS + 1];
+    size_t li = 0;
+    if (!s) return;
+    for (size_t i = 0;; ++i) {
+        char c = s[i];
+        if (c == '\n' || c == '\0') {
+            line[li] = '\0';
+            term_push_line_color(line, color);
+            li = 0;
+            if (c == '\0') break;
+            continue;
+        }
+        if (li + 1 >= (size_t)sizeof(line)) {
+            line[li] = '\0';
+            term_push_line_color(line, color);
             li = 0;
         }
         if (c == '\r') continue;
@@ -3017,7 +3130,7 @@ static void term_cmd_ls(const char* cwd, const char* arg) {
     }
 }
 
-static void term_push_multiline_state(desk_term_state_t* ts, const char* s) {
+static void term_push_multiline_state(desk_term_state_t* ts, const char* s, uint32_t color) {
     char line[DESK_TERM_COLS + 1];
     size_t li = 0;
     if (!s || !ts) return;
@@ -3025,14 +3138,14 @@ static void term_push_multiline_state(desk_term_state_t* ts, const char* s) {
         char c = s[i];
         if (c == '\n' || c == '\0') {
             line[li] = '\0';
-            term_push_line_state(ts, line);
+            term_push_line_state(ts, line, color);
             li = 0;
             if (c == '\0') break;
             continue;
         }
         if (li + 1 >= sizeof(line)) {
             line[li] = '\0';
-            term_push_line_state(ts, line);
+            term_push_line_state(ts, line, color);
             li = 0;
         }
         if (c == '\r') continue;
@@ -3058,7 +3171,7 @@ void desk_term_write_for_tid(int tid, const char* s) {
     desk_window_t* w = &g_windows[term_idx];
     desk_term_state_t* ts = term_state_for_window(w);
     if (!ts) return;
-    term_push_multiline_state(ts, s);
+    term_push_multiline_state(ts, s, 0xFFD4BFFFu);
     g_desktop_dirty = 1;
 }
 
@@ -3987,7 +4100,7 @@ void term_run_command_line(desk_window_t* tw, const char* line_in) {
         }
         long tid = desktop_launch_target_tid(path);
         if (tid >= 0) {
-            if (argc > 2) term_write_args_for_tid((int)tid, path, argv, 2, argc);
+            term_write_args_for_tid((int)tid, path, argv, 2, argc);
             if (term_idx >= 0) term_route_register((int)tid, term_idx);
             term_push_line("[ok] task started");
         } else {
@@ -4602,24 +4715,62 @@ static void draw_window(desk_window_t* w, int focused) {
 
     if (w->terminal) {
         desk_term_state_t* ts = term_state_for_window(w);
-        int tx = ox + 6;
+        int tx = ox + 8;
         int ty = oy + DESK_TITLEBAR_H + 4;
-        fill_rect(ox + 2, oy + DESK_TITLEBAR_H + 1, ow - 4, oh - DESK_TITLEBAR_H - 3, 0xFF070B10u);
-        fill_rect(ox + 2, oy + DESK_TITLEBAR_H + 1, ow - 4, 16, th->title_focus);
-        draw_text(ox + 8, oy + DESK_TITLEBAR_H + 5, "NTux Shell Window", th->text_main);
+        int term_h = oh - DESK_TITLEBAR_H - 3;
+        fill_rect(ox + 2, oy + DESK_TITLEBAR_H + 1, ow - 4, term_h, 0xFF0A0E14u);
+        fill_rect(ox + 4, oy + DESK_TITLEBAR_H + 3, ow - 8, 1, 0xFF1A2A3Au);
+        int y = ty + g_font_ascent + 4;
+        int max_y = oy + oh - 36;
         if (ts) {
-            for (int i = 0; i < ts->line_count; ++i) {
-                draw_text(tx, ty + 18 + i * 10, ts->lines[i], 0xFFBFD0FFu);
+            int start = 0;
+            int vis_lines = (max_y - y + 1) / g_font_line_height;
+            if (vis_lines < 0) vis_lines = 0;
+            if (ts->line_count > vis_lines && vis_lines > 0) start = ts->line_count - vis_lines;
+            for (int i = start; i < ts->line_count; ++i) {
+                draw_text(tx, y + (i - start) * g_font_line_height, ts->lines[i], ts->line_colors[i]);
+                y += g_font_line_height;
             }
         }
-        char prompt_top[DESK_TERM_COLS + 64];
-        char prompt_line[DESK_TERM_COLS + 64];
-        term_make_prompt(ts, prompt_top, sizeof(prompt_top));
-        prompt_line[0] = '\0';
-        (void)str_append(prompt_line, sizeof(prompt_line), "+-> ");
-        (void)str_append(prompt_line, sizeof(prompt_line), ts ? ts->input : "");
-        draw_text(tx, oy + oh - 24, prompt_top, th->accent);
-        draw_text(tx, oy + oh - 14, prompt_line, 0xFF39FF88u);
+        if (y < ty + g_font_ascent + 4) y = ty + g_font_ascent + 4;
+        if (y > max_y) y = max_y;
+        if (ts) {
+            char prompt[DESK_TERM_COLS + 80];
+            int uid = (int)sys_get_uid();
+            char user_str[16];
+            snprintf(user_str, sizeof(user_str), "user%u", uid ? uid : 0);
+            (void)str_append(prompt, sizeof(prompt), "+--");
+            (void)str_append(prompt, sizeof(prompt), user_str);
+            (void)str_append(prompt, sizeof(prompt), " @ ");
+            (void)str_append(prompt, sizeof(prompt), ts->cwd);
+            (void)str_append(prompt, sizeof(prompt), " :: ");
+            ntux_time_t t;
+            char time_str[16];
+            if (sys_get_time(&t) == 0) {
+                int n = snprintf(time_str, sizeof(time_str), "%02u:%02u:%02u",
+                    (unsigned)t.hour, (unsigned)t.minute, (unsigned)t.second);
+                if (n > 0) str_append(prompt, sizeof(prompt), time_str);
+            }
+            draw_text(tx, y, prompt, 0xFF6A7A8Au);
+            int cx = tx;
+            for (const char* p = "+--"; *p; ++p) { draw_char(cx, y, *p, 0xFF6A7A8Au); cx += g_font_cache[(uint8_t)*p].advance_x; }
+            for (const char* p = user_str; *p; ++p) { draw_char(cx, y, *p, 0xFF4EC9FFu); cx += g_font_cache[(uint8_t)*p].advance_x; }
+            for (const char* p = " @ "; *p; ++p) { draw_char(cx, y, *p, 0xFF6A7A8Au); cx += g_font_cache[(uint8_t)*p].advance_x; }
+            for (const char* p = ts->cwd; *p; ++p) { draw_char(cx, y, *p, 0xFF39FF88u); cx += g_font_cache[(uint8_t)*p].advance_x; }
+            for (const char* p = " :: "; *p; ++p) { draw_char(cx, y, *p, 0xFF6A7A8Au); cx += g_font_cache[(uint8_t)*p].advance_x; }
+            if (sys_get_time(&t) == 0) {
+                int n = snprintf(time_str, sizeof(time_str), "%02u:%02u:%02u",
+                    (unsigned)t.hour, (unsigned)t.minute, (unsigned)t.second);
+                if (n > 0) for (const char* p = time_str; *p; ++p) { draw_char(cx, y, *p, 0xFFFFD166u); cx += g_font_cache[(uint8_t)*p].advance_x; }
+            }
+            y += g_font_line_height;
+            draw_text(tx, y, "+-> ", 0xFF4EC9FFu);
+            if (ts->input[0]) {
+                int icx = tx;
+                for (const char* p = "+-> "; *p; ++p) icx += g_font_cache[(uint8_t)*p].advance_x;
+                draw_text(icx, y, ts->input, 0xFF39FF88u);
+            }
+        }
     } else if (w->file_browser) {
         draw_file_browser(w, window_browser_state(w));
     } else if (w->analog_clock) {
@@ -9825,7 +9976,7 @@ int desktop_init(void) {
     {
         uint64_t hz = desktop_get_hz();
         g_boot_splash_start = sys_get_ticks();
-        g_boot_splash_until = g_boot_splash_start + hz * 30u;
+        g_boot_splash_until = 0;
         g_boot_splash_frames = 0;
         g_storage_rescan_ticks = 0;
         g_last_storage_rescan = sys_get_ticks();
@@ -9865,6 +10016,18 @@ int desktop_init(void) {
     }
     desktop_auto_arrange_icons();
     (void)desktop_conf_save_layout();
+    {
+        char font_path[256] = "/boot/res/fonts/Hack-Regular.ttf";
+        char font_cfg[256];
+        uint64_t flen = 0;
+        if (sys_fs_read_file("/conf/font.conf", font_cfg, sizeof(font_cfg) - 1, &flen) == 0 && flen > 0) {
+            font_cfg[flen] = '\0';
+            size_t n = strlen(font_cfg);
+            while (n > 0 && (font_cfg[n-1] == '\n' || font_cfg[n-1] == '\r')) font_cfg[--n] = '\0';
+            if (n > 0) snprintf(font_path, sizeof(font_path), "%s", font_cfg);
+        }
+        font_cache_load(font_path, FONT_PX_SIZE);
+    }
     return 0;
 }
 
@@ -9957,31 +10120,6 @@ void desktop_run(void) {
         }
         /* installer handled externally */
         desktop_publish_input_state();
-        if (sys_get_ticks() < g_boot_splash_until) {
-            draw_wallpaper_base(g_frame);
-            draw_boot_splash();
-            (void)sys_fb_blit32(g_frame, g_fb.width, g_fb.height, g_fb.width * 4u);
-            desktop_wait_ticks(1);
-            g_last_redraw_tick = now;
-            if (g_boot_splash_frames < 1000000u) g_boot_splash_frames++;
-            if (g_boot_splash_frames > 30000u) {
-                g_boot_splash_until = 0;
-            }
-            continue;
-        }
-        if (g_power_action != 0 && sys_get_ticks() < g_power_until) {
-            draw_wallpaper_base(g_frame);
-            draw_power_splash();
-            (void)sys_fb_blit32(g_frame, g_fb.width, g_fb.height, g_fb.width * 4u);
-            desktop_wait_ticks(1);
-            g_last_redraw_tick = now;
-            continue;
-        }
-        if (g_power_action != 0 && sys_get_ticks() >= g_power_until) {
-            if (g_power_action == 1) (void)sys_reboot();
-            else (void)sys_shutdown();
-            g_power_action = 0;
-        }
         handle_namebox_input();
         handle_terminal_input();
         if (now_sec != 0) {

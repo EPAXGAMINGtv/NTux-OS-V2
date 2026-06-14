@@ -24,6 +24,7 @@
 #include <mm/pmm.h>
 #include <lib/string.h>
 #include <lib/kutils.h>
+#include <sys/user.h>
 
 extern volatile struct limine_framebuffer_request framebuffer_request;
 
@@ -371,6 +372,11 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (tid >= 0) ? (uint64_t)tid : 0u;
             return 0;
         }
+        case INT80_GET_TID: {
+            int tid = int80_current_tid();
+            regs->rax = (tid >= 0) ? (uint64_t)tid : (uint64_t)-1;
+            return 0;
+        }
         case INT80_TASK_LIST: {
             int80_task_info_t* out = (int80_task_info_t*)(uintptr_t)regs->rdi;
             size_t max_entries = (size_t)regs->rsi;
@@ -435,6 +441,226 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             }
 
             regs->rax = (uint64_t)module_loader_list(out, max_entries, out_count_ptr);
+            return 0;
+        }
+        case INT80_GETEUID: {
+            regs->rax = (uint64_t)thread_get_current_euid();
+            return 0;
+        }
+        case INT80_SETGID: {
+            regs->rax = (uint64_t)thread_set_current_gid((uint32_t)regs->rdi);
+            return 0;
+        }
+        case INT80_GETGID: {
+            regs->rax = (uint64_t)thread_get_current_gid();
+            return 0;
+        }
+        case INT80_SETEGID: {
+            regs->rax = (uint64_t)thread_set_current_egid((uint32_t)regs->rdi);
+            return 0;
+        }
+        case INT80_GETEGID: {
+            regs->rax = (uint64_t)thread_get_current_egid();
+            return 0;
+        }
+        case INT80_CHMOD: {
+            const char* path = (const char*)(uintptr_t)regs->rdi;
+            uint32_t mode = (uint32_t)regs->rsi;
+            if (!user_cstr_ok(path, 1024u)) { regs->rax = (uint64_t)-1; return 0; }
+            regs->rax = (uint64_t)vfs_chmod(path, (uint16_t)mode);
+            return 0;
+        }
+        case INT80_CHOWN: {
+            const char* path = (const char*)(uintptr_t)regs->rdi;
+            uint32_t owner = (uint32_t)regs->rsi;
+            uint32_t group = (uint32_t)regs->rdx;
+            if (!user_cstr_ok(path, 1024u)) { regs->rax = (uint64_t)-1; return 0; }
+            regs->rax = (uint64_t)vfs_chown(path, owner, group);
+            return 0;
+        }
+        case INT80_STAT: {
+            const char* path = (const char*)(uintptr_t)regs->rdi;
+            void* buf = (void*)(uintptr_t)regs->rsi;
+            if (!user_cstr_ok(path, 1024u) || !user_ptr_range_ok(buf, 64)) {
+                regs->rax = (uint64_t)-1; return 0;
+            }
+            uint16_t mode;
+            uint32_t uid, gid;
+            if (vfs_getattr(path, &mode, &uid, &gid) != 0) {
+                regs->rax = (uint64_t)-1; return 0;
+            }
+            size_t size = 0;
+            vfs_read_file(path, NULL, 0, &size);
+            memset(buf, 0, 64);
+            ((uint16_t*)buf)[0] = mode;
+            ((uint32_t*)buf)[1] = uid;
+            ((uint32_t*)buf)[2] = gid;
+            ((uint64_t*)buf)[2] = size;
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_UMASK: {
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GETGROUPS: {
+            uint32_t* out = (uint32_t*)(uintptr_t)regs->rdi;
+            int max = (int)regs->rsi;
+            if (out && !user_ptr_range_ok(out, (size_t)max * sizeof(uint32_t))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)thread_get_current_groups(out, max);
+            return 0;
+        }
+        case INT80_SETGROUPS: {
+            const uint32_t* groups = (const uint32_t*)(uintptr_t)regs->rdi;
+            int n = (int)regs->rsi;
+            if (groups && !user_ptr_range_ok(groups, (size_t)n * sizeof(uint32_t))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)thread_set_current_groups(groups, n);
+            return 0;
+        }
+        case INT80_AUTH_USER: {
+            const char* name = (const char*)(uintptr_t)regs->rdi;
+            const char* pass = (const char*)(uintptr_t)regs->rsi;
+            if (!user_cstr_ok(name, USER_MAX_NAME) || !user_cstr_ok(pass, USER_MAX_PASS)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)sys_auth_user(name, pass);
+            return 0;
+        }
+        case INT80_GETPWNAM: {
+            char* out = (char*)(uintptr_t)regs->rdi;
+            const char* name = (const char*)(uintptr_t)regs->rsi;
+            if (!out || !user_ptr_range_ok(out, 256) || !user_cstr_ok(name, USER_MAX_NAME)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            const user_entry_t* u = sys_user_get_by_name(name);
+            if (!u) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            char buf[256];
+            int pos = 0;
+            char* p = u->name; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            char uid_s[16]; itoa((int)u->uid, uid_s, 10);
+            p = uid_s; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            char gid_s[16]; itoa((int)u->gid, gid_s, 10);
+            p = gid_s; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            p = u->home; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            p = u->shell; while (*p && pos < 250) buf[pos++] = *p++;
+            buf[pos] = '\0';
+            memcpy(out, buf, (size_t)pos + 1);
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GETPWUID: {
+            char* out = (char*)(uintptr_t)regs->rdi;
+            uint32_t uid = (uint32_t)regs->rsi;
+            if (!out || !user_ptr_range_ok(out, 256)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            const user_entry_t* u = sys_user_get_by_uid(uid);
+            if (!u) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            char buf[256];
+            int pos = 0;
+            char* p = u->name; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            char uid_s[16]; itoa((int)u->uid, uid_s, 10);
+            p = uid_s; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            char gid_s[16]; itoa((int)u->gid, gid_s, 10);
+            p = gid_s; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            p = u->home; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            p = u->shell; while (*p && pos < 250) buf[pos++] = *p++;
+            buf[pos] = '\0';
+            memcpy(out, buf, (size_t)pos + 1);
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GETGRNAM: {
+            char* out = (char*)(uintptr_t)regs->rdi;
+            const char* name = (const char*)(uintptr_t)regs->rsi;
+            if (!out || !user_ptr_range_ok(out, 256) || !user_cstr_ok(name, USER_MAX_NAME)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            const group_entry_t* g = sys_group_get_by_name(name);
+            if (!g) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            char buf[256];
+            int pos = 0;
+            char* p = g->name; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            char gid_s[16]; itoa((int)g->gid, gid_s, 10);
+            p = gid_s; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            for (int j = 0; j < g->member_count; ++j) {
+                if (j > 0 && pos < 250) buf[pos++] = ',';
+                char uid_s[16]; itoa((int)g->members[j], uid_s, 10);
+                p = uid_s; while (*p && pos < 250) buf[pos++] = *p++;
+            }
+            buf[pos] = '\0';
+            memcpy(out, buf, (size_t)pos + 1);
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GETGRGID: {
+            char* out = (char*)(uintptr_t)regs->rdi;
+            uint32_t gid = (uint32_t)regs->rsi;
+            if (!out || !user_ptr_range_ok(out, 256)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            const group_entry_t* g = sys_group_get_by_gid(gid);
+            if (!g) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            char buf[256];
+            int pos = 0;
+            char* p = g->name; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            char gid_s[16]; itoa((int)g->gid, gid_s, 10);
+            p = gid_s; while (*p && pos < 250) buf[pos++] = *p++;
+            if (pos < 250) buf[pos++] = ':';
+            for (int j = 0; j < g->member_count; ++j) {
+                if (j > 0 && pos < 250) buf[pos++] = ',';
+                char uid_s[16]; itoa((int)g->members[j], uid_s, 10);
+                p = uid_s; while (*p && pos < 250) buf[pos++] = *p++;
+            }
+            buf[pos] = '\0';
+            memcpy(out, buf, (size_t)pos + 1);
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GETPPID: {
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_SETSID: {
+            regs->rax = 0;
+            return 0;
+        }
+        case INT80_GETPGID: {
+            regs->rax = 0;
             return 0;
         }
         case INT80_SET_UID: {

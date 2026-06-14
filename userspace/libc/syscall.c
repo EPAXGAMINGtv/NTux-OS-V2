@@ -301,5 +301,81 @@ long sys_dialog_push(int tid, uint32_t code, const char* text) {
     return ntux_syscall3(INT80_DIALOG_PUSH, (uint64_t)tid, (uint64_t)code, (uint64_t)(uintptr_t)text);
 }
 
+long sys_geteuid(void) {
+    return ntux_syscall3(INT80_GETEUID, 0, 0, 0);
+}
+
+long sys_setgid(uint32_t gid) {
+    return ntux_syscall3(INT80_SETGID, (uint64_t)gid, 0, 0);
+}
+
+long sys_getgid(void) {
+    return ntux_syscall3(INT80_GETGID, 0, 0, 0);
+}
+
+long sys_setegid(uint32_t egid) {
+    return ntux_syscall3(INT80_SETEGID, (uint64_t)egid, 0, 0);
+}
+
+long sys_getegid(void) {
+    return ntux_syscall3(INT80_GETEGID, 0, 0, 0);
+}
+
+long sys_chmod(const char* path, uint32_t mode) {
+    return ntux_syscall3(INT80_CHMOD, (uint64_t)(uintptr_t)path, (uint64_t)mode, 0);
+}
+
+long sys_chown(const char* path, uint32_t owner, uint32_t group) {
+    return ntux_syscall3(INT80_CHOWN, (uint64_t)(uintptr_t)path, (uint64_t)owner, (uint64_t)group);
+}
+
+long sys_stat(const char* path, void* buf) {
+    return ntux_syscall3(INT80_STAT, (uint64_t)(uintptr_t)path, (uint64_t)(uintptr_t)buf, 0);
+}
+
+long sys_umask(uint32_t mask) {
+    return ntux_syscall3(INT80_UMASK, (uint64_t)mask, 0, 0);
+}
+
+long sys_getgroups(int size, uint32_t* list) {
+    return ntux_syscall3(INT80_GETGROUPS, (uint64_t)size, (uint64_t)(uintptr_t)list, 0);
+}
+
+long sys_setgroups(int size, const uint32_t* list) {
+    return ntux_syscall3(INT80_SETGROUPS, (uint64_t)size, (uint64_t)(uintptr_t)list, 0);
+}
+
+long sys_auth_user(const char* name, const char* password) {
+    return ntux_syscall3(INT80_AUTH_USER, (uint64_t)(uintptr_t)name, (uint64_t)(uintptr_t)password, 0);
+}
+
+long sys_getpwnam(char* out, const char* name) {
+    return ntux_syscall3(INT80_GETPWNAM, (uint64_t)(uintptr_t)out, (uint64_t)(uintptr_t)name, 0);
+}
+
+long sys_getpwuid(char* out, uint32_t uid) {
+    return ntux_syscall3(INT80_GETPWUID, (uint64_t)(uintptr_t)out, (uint64_t)uid, 0);
+}
+
+long sys_getgrnam(char* out, const char* name) {
+    return ntux_syscall3(INT80_GETGRNAM, (uint64_t)(uintptr_t)out, (uint64_t)(uintptr_t)name, 0);
+}
+
+long sys_getgrgid(char* out, uint32_t gid) {
+    return ntux_syscall3(INT80_GETGRGID, (uint64_t)(uintptr_t)out, (uint64_t)gid, 0);
+}
+
+long sys_getppid(void) {
+    return ntux_syscall3(INT80_GETPPID, 0, 0, 0);
+}
+
+long sys_setsid(void) {
+    return ntux_syscall3(INT80_SETSID, 0, 0, 0);
+}
+
+long sys_getpgid(void) {
+    return ntux_syscall3(INT80_GETPGID, 0, 0, 0);
+}
+
 
 

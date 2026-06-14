@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 #include <fs/fd.h>
+#include <sys/user.h>
 
 typedef enum {
     THREAD_RUNNING,
@@ -22,6 +23,13 @@ typedef struct thread {
     uint64_t id;
     char name[32];
     uint32_t uid;
+    uint32_t euid;
+    uint32_t suid;
+    uint32_t gid;
+    uint32_t egid;
+    uint32_t sgid;
+    uint32_t groups[USER_MAX_GROUPS];
+    int ngroups;
     uint64_t user_vstart;
     uint64_t user_vend;
     uint64_t cr3;
@@ -75,6 +83,14 @@ int thread_get_current_user_range(uint64_t* out_start, uint64_t* out_end);
 uint64_t thread_get_current_cr3(void);
 void thread_set_current_cr3(uint64_t cr3);
 int thread_get_current_tid(void);
+uint32_t thread_get_current_euid(void);
+int thread_set_current_euid(uint32_t euid);
+uint32_t thread_get_current_gid(void);
+int thread_set_current_gid(uint32_t gid);
+uint32_t thread_get_current_egid(void);
+int thread_set_current_egid(uint32_t egid);
+int thread_get_current_groups(uint32_t* out, int max);
+int thread_set_current_groups(const uint32_t* groups, int n);
 
 /* Global thread lock */
 void thread_lock_global(void);

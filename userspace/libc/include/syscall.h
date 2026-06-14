@@ -76,7 +76,26 @@ enum {
     INT80_DIALOG_PUSH = 115,
     INT80_MODULE_LIST = 116,
     INT80_GET_GPU_INFO = 117,
-    INT80_GET_GPU_STATS = 118
+    INT80_GET_GPU_STATS = 118,
+    INT80_GETEUID = 119,
+    INT80_SETGID = 120,
+    INT80_GETGID = 121,
+    INT80_SETEGID = 122,
+    INT80_GETEGID = 123,
+    INT80_CHMOD = 124,
+    INT80_CHOWN = 125,
+    INT80_STAT = 126,
+    INT80_UMASK = 127,
+    INT80_GETGROUPS = 128,
+    INT80_SETGROUPS = 129,
+    INT80_AUTH_USER = 130,
+    INT80_GETPWNAM = 131,
+    INT80_GETPWUID = 132,
+    INT80_GETGRNAM = 133,
+    INT80_GETGRGID = 134,
+    INT80_GETPPID = 135,
+    INT80_SETSID = 136,
+    INT80_GETPGID = 137
 };
 
 long ntux_syscall3(uint64_t nr, uint64_t a0, uint64_t a1, uint64_t a2);
@@ -270,6 +289,26 @@ long sys_get_cpu_info(ntux_cpu_info_t* out);
 long sys_get_cpu_brand(char* out, uint64_t cap);
 long sys_dialog_pop(char* out, uint64_t cap, uint32_t* out_code);
 long sys_dialog_push(int tid, uint32_t code, const char* text);
+
+long sys_geteuid(void);
+long sys_setgid(uint32_t gid);
+long sys_getgid(void);
+long sys_setegid(uint32_t egid);
+long sys_getegid(void);
+long sys_chmod(const char* path, uint32_t mode);
+long sys_chown(const char* path, uint32_t owner, uint32_t group);
+long sys_stat(const char* path, void* buf);
+long sys_umask(uint32_t mask);
+long sys_getgroups(int size, uint32_t* list);
+long sys_setgroups(int size, const uint32_t* list);
+long sys_auth_user(const char* name, const char* password);
+long sys_getpwnam(char* out, const char* name);
+long sys_getpwuid(char* out, uint32_t uid);
+long sys_getgrnam(char* out, const char* name);
+long sys_getgrgid(char* out, uint32_t gid);
+long sys_getppid(void);
+long sys_setsid(void);
+long sys_getpgid(void);
 
 #ifdef __cplusplus
 }

@@ -1,12 +1,15 @@
 #include <fs/ramfs.h>
 
 #include <lib/string.h>
+#include <sched/thread.h>
 
 static int ramfs_alloc_node(ramfs_t* fs) {
     for (int i = 0; i < RAMFS_MAX_NODES; ++i) {
         if (!fs->nodes[i].used) {
             memset(&fs->nodes[i], 0, sizeof(ramfs_node_t));
             fs->nodes[i].used = 1;
+            fs->nodes[i].uid = 0;
+            fs->nodes[i].gid = 0;
             return i;
         }
     }
@@ -140,7 +143,7 @@ static uint8_t* ramfs_alloc_bytes(ramfs_t* fs, size_t len) {
     return ptr;
 }
 
-static int ramfs_op_mkdir(void* ctx, const char* path) {
+static int ramfs_op_mkdir(void* ctx, const char* path, uint16_t mode) {
     ramfs_t* fs = (ramfs_t*)ctx;
     int parent = -1;
     char leaf[VFS_MAX_NAME];
@@ -152,13 +155,18 @@ static int ramfs_op_mkdir(void* ctx, const char* path) {
 
     if (rc == -2) {
         int created = ramfs_create_child(fs, parent, leaf, RAMFS_NODE_DIR);
-        return created >= 0 ? 0 : -2;
+        if (created >= 0) {
+            fs->nodes[created].mode = mode ? mode : RAMFS_DEFAULT_DIR_MODE;
+            fs->nodes[created].uid = thread_get_current_uid();
+            return 0;
+        }
+        return -2;
     }
 
     return -3;
 }
 
-static int ramfs_op_create_file(void* ctx, const char* path, const void* data, size_t len) {
+static int ramfs_op_create_file(void* ctx, const char* path, uint16_t mode, const void* data, size_t len) {
     ramfs_t* fs = (ramfs_t*)ctx;
     int parent = -1;
     char leaf[VFS_MAX_NAME];
@@ -167,17 +175,15 @@ static int ramfs_op_create_file(void* ctx, const char* path, const void* data, s
     int node = rc;
     if (rc == -2) {
         node = ramfs_create_child(fs, parent, leaf, RAMFS_NODE_FILE);
-        if (node < 0) {
-            return -1;
-        }
+        if (node < 0) return -1;
+        fs->nodes[node].mode = mode ? mode : RAMFS_DEFAULT_FILE_MODE;
+        fs->nodes[node].uid = thread_get_current_uid();
     } else if (rc < 0) {
         return -2;
     }
 
     ramfs_node_t* n = &fs->nodes[node];
-    if (n->type != RAMFS_NODE_FILE) {
-        return -3;
-    }
+    if (n->type != RAMFS_NODE_FILE) return -3;
 
     if (len == 0) {
         n->data = NULL;
@@ -187,9 +193,7 @@ static int ramfs_op_create_file(void* ctx, const char* path, const void* data, s
     }
 
     uint8_t* dst = n->capacity >= len ? n->data : ramfs_alloc_bytes(fs, len);
-    if (dst == NULL) {
-        return -4;
-    }
+    if (dst == NULL) return -4;
 
     memcpy(dst, data, len);
     n->data = dst;
@@ -199,7 +203,7 @@ static int ramfs_op_create_file(void* ctx, const char* path, const void* data, s
 }
 
 static int ramfs_op_write_file(void* ctx, const char* path, const void* data, size_t len) {
-    return ramfs_op_create_file(ctx, path, data, len);
+    return ramfs_op_create_file(ctx, path, 0, data, len);
 }
 
 static int ramfs_op_read_file(void* ctx, const char* path, void* out, size_t out_cap, size_t* out_len) {
@@ -352,6 +356,34 @@ static int ramfs_op_rename(void* ctx, const char* old_path, const char* new_path
     return 0;
 }
 
+static int ramfs_op_getattr(void* ctx, const char* path, uint16_t* mode, uint32_t* uid, uint32_t* gid) {
+    ramfs_t* fs = (ramfs_t*)ctx;
+    int rc = ramfs_resolve(fs, path, 0, NULL, NULL);
+    if (rc < 0) return -1;
+    ramfs_node_t* n = &fs->nodes[rc];
+    if (mode) *mode = n->mode;
+    if (uid) *uid = n->uid;
+    if (gid) *gid = n->gid;
+    return 0;
+}
+
+static int ramfs_op_chmod(void* ctx, const char* path, uint16_t mode) {
+    ramfs_t* fs = (ramfs_t*)ctx;
+    int rc = ramfs_resolve(fs, path, 0, NULL, NULL);
+    if (rc < 0) return -1;
+    fs->nodes[rc].mode = (uint16_t)((fs->nodes[rc].mode & ~07777u) | (mode & 07777u));
+    return 0;
+}
+
+static int ramfs_op_chown(void* ctx, const char* path, uint32_t uid, uint32_t gid) {
+    ramfs_t* fs = (ramfs_t*)ctx;
+    int rc = ramfs_resolve(fs, path, 0, NULL, NULL);
+    if (rc < 0) return -1;
+    if (uid != (uint32_t)-1) fs->nodes[rc].uid = uid;
+    if (gid != (uint32_t)-1) fs->nodes[rc].gid = gid;
+    return 0;
+}
+
 static const vfs_backend_ops_t g_ramfs_ops = {
     .mkdir = ramfs_op_mkdir,
     .create_file = ramfs_op_create_file,
@@ -361,6 +393,9 @@ static const vfs_backend_ops_t g_ramfs_ops = {
     .exists = ramfs_op_exists,
     .remove = ramfs_op_remove,
     .rename = ramfs_op_rename,
+    .getattr = ramfs_op_getattr,
+    .chmod = ramfs_op_chmod,
+    .chown = ramfs_op_chown,
 };
 
 void ramfs_init(ramfs_t* fs) {

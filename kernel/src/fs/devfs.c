@@ -29,15 +29,17 @@ static int devfs_ioctl_stub(void* ctx, uint64_t req, void* arg) {
     return -1;
 }
 
-static int devfs_op_mkdir(void* ctx, const char* path) {
+static int devfs_op_mkdir(void* ctx, const char* path, uint16_t mode) {
     (void)ctx;
     (void)path;
+    (void)mode;
     return -1;
 }
 
-static int devfs_op_create(void* ctx, const char* path, const void* data, size_t len) {
+static int devfs_op_create(void* ctx, const char* path, uint16_t mode, const void* data, size_t len) {
     (void)ctx;
     (void)path;
+    (void)mode;
     (void)data;
     (void)len;
     return -1;
@@ -142,7 +144,43 @@ static int devfs_op_exists(void* ctx, const char* path) {
     return 0;
 }
 
-static const vfs_backend_ops_t g_devfs_ops = {
+static int devfs_op_getattr(void* ctx, const char* path, uint16_t* mode, uint32_t* uid, uint32_t* gid) {
+    (void)ctx;
+    if (!path) return -1;
+    if (strcmp(path, "/") == 0 || path[0] == '\0') {
+        if (mode) *mode = 0755;
+        if (uid) *uid = 0;
+        if (gid) *gid = 0;
+        return 0;
+    }
+    for (size_t i = 0; i < DEVFS_MAX_NODES; ++i) {
+        if (!g_nodes[i].used) continue;
+        if (strcmp(g_nodes[i].name, path) == 0) {
+            if (mode) *mode = 0666;
+            if (uid) *uid = 0;
+            if (gid) *gid = 0;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+static int devfs_op_chmod(void* ctx, const char* path, uint16_t mode) {
+    (void)ctx;
+    (void)path;
+    (void)mode;
+    return 0;
+}
+
+static int devfs_op_chown(void* ctx, const char* path, uint32_t uid, uint32_t gid) {
+    (void)ctx;
+    (void)path;
+    (void)uid;
+    (void)gid;
+    return 0;
+}
+
+const vfs_backend_ops_t g_devfs_ops = {
     .mkdir = devfs_op_mkdir,
     .create_file = devfs_op_create,
     .write_file = devfs_op_write_file,
@@ -150,7 +188,10 @@ static const vfs_backend_ops_t g_devfs_ops = {
     .list_dir = devfs_op_list_dir,
     .exists = devfs_op_exists,
     .remove = devfs_op_remove,
-    .rename = devfs_op_rename
+    .rename = devfs_op_rename,
+    .getattr = devfs_op_getattr,
+    .chmod = devfs_op_chmod,
+    .chown = devfs_op_chown,
 };
 
 static int devfs_add_node(const char* name, const devfs_ops_t* ops, void* ctx) {
@@ -269,6 +310,9 @@ void devfs_init(void) {
     (void)devfs_add_node("null", &null_ops, NULL);
     (void)devfs_add_node("zero", &zero_ops, NULL);
     (void)devfs_add_node("input/event0", &input_ops, NULL);
+
+    extern int tty_register_all(void);
+    tty_register_all();
 }
 
 int devfs_register(const char* name, const devfs_ops_t* ops, void* ctx) {

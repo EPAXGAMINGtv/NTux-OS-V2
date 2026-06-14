@@ -30,6 +30,7 @@
 #include <mm/vmm.h>
 #include <fs/fs.h>
 #include <syscall/syscall.h>
+#include <sys/user.h>
 
 #include <elf/module_loader.h>
 
@@ -149,6 +150,8 @@ static void init_storage_and_fs(void) {
     fs_mkdir("/", "home");
     fs_mkdir("/home", "user");
     fs_create_file("/home/user", "readme.txt", "Welcome to NTux-OS", 18);
+
+    sys_user_init();
     kprint_ok("Storage + FS init completed");
 }
 

@@ -31,7 +31,9 @@ void fs_rescan_storage(void);
 uint32_t fs_mount_generation(void);
 
 int fs_mkdir(const char* path, const char* name);
+int fs_mkdir_mode(const char* path, const char* name, uint16_t mode);
 int fs_create_file(const char* path, const char* name, const void* data, size_t len);
+int fs_create_file_mode(const char* path, const char* name, uint16_t mode, const void* data, size_t len);
 int fs_write_file(const char* path, const void* data, size_t len);
 int fs_read_file(const char* path, void* out, size_t out_cap, size_t* out_len);
 int fs_read_file_range(const char* path, size_t offset, void* out, size_t len, size_t* out_read, size_t* out_file_len);

@@ -14,6 +14,9 @@ typedef enum {
     RAMFS_NODE_DIR,
 } ramfs_node_type_t;
 
+#define RAMFS_DEFAULT_DIR_MODE 0755
+#define RAMFS_DEFAULT_FILE_MODE 0644
+
 typedef struct {
     int used;
     ramfs_node_type_t type;
@@ -24,6 +27,9 @@ typedef struct {
     uint8_t* data;
     size_t size;
     size_t capacity;
+    uint16_t mode;
+    uint32_t uid;
+    uint32_t gid;
 } ramfs_node_t;
 
 typedef struct {

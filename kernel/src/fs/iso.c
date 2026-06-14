@@ -256,15 +256,17 @@ static int iso_list_cb(const uint8_t* rec, void* user) {
     return 0;
 }
 
-static int iso_op_mkdir(void* ctx, const char* path) {
+static int iso_op_mkdir(void* ctx, const char* path, uint16_t mode) {
     (void)ctx;
     (void)path;
+    (void)mode;
     return -1;
 }
 
-static int iso_op_create_file(void* ctx, const char* path, const void* data, size_t len) {
+static int iso_op_create_file(void* ctx, const char* path, uint16_t mode, const void* data, size_t len) {
     (void)ctx;
     (void)path;
+    (void)mode;
     (void)data;
     (void)len;
     return -1;
@@ -468,6 +470,31 @@ int iso_fs_mount(iso_fs_t* fs, uint8_t drive_index, uint64_t partition_lba) {
     return 0;
 }
 
+static int iso_op_getattr(void* ctx, const char* path, uint16_t* mode, uint32_t* uid, uint32_t* gid) {
+    iso_fs_t* fs = (iso_fs_t*)ctx;
+    (void)fs;
+    if (!path) return -1;
+    if (mode) *mode = 0555;
+    if (uid) *uid = 0;
+    if (gid) *gid = 0;
+    return 0;
+}
+
+static int iso_op_chmod(void* ctx, const char* path, uint16_t mode) {
+    (void)ctx;
+    (void)path;
+    (void)mode;
+    return -1;
+}
+
+static int iso_op_chown(void* ctx, const char* path, uint32_t uid, uint32_t gid) {
+    (void)ctx;
+    (void)path;
+    (void)uid;
+    (void)gid;
+    return -1;
+}
+
 static const vfs_backend_ops_t g_iso_ops = {
     .mkdir = iso_op_mkdir,
     .create_file = iso_op_create_file,
@@ -477,6 +504,9 @@ static const vfs_backend_ops_t g_iso_ops = {
     .exists = iso_op_exists,
     .remove = iso_op_remove,
     .rename = iso_op_rename,
+    .getattr = iso_op_getattr,
+    .chmod = iso_op_chmod,
+    .chown = iso_op_chown,
 };
 
 const vfs_backend_ops_t* iso_fs_backend_ops(void) {

@@ -153,6 +153,18 @@ static int ensure_write_cap(ntux_file_t *f, uint64_t need) {
     return 0;
 }
 
+static long stdio_write(const void *buf, size_t len);
+
+static char g_print_buf[1024];
+static int g_print_buf_len = 0;
+
+static void print_buf_flush(void) {
+    if (g_print_buf_len > 0) {
+        stdio_write(g_print_buf, g_print_buf_len);
+        g_print_buf_len = 0;
+    }
+}
+
 static long stdio_write(const void *buf, size_t len) {
     if (!buf || len == 0) return 0;
     const char* p = (const char*)buf;
@@ -176,7 +188,9 @@ static long stdio_write(const void *buf, size_t len) {
 }
 
 int putchar(int c) {
-    return (int)sys_putchar((char)c);
+    char ch = (char)c;
+    if (stdio_write(&ch, 1) < 0) return EOF;
+    return (unsigned char)ch;
 }
 
 int getchar(void) {
@@ -186,7 +200,9 @@ int getchar(void) {
 }
 
 int puts(const char *text) {
-    printf(text,"\n");
+    if (fputs(text, stdout) == EOF) return EOF;
+    if (fputc('\n', stdout) == EOF) return EOF;
+    return 0;
 }
 
 size_t readline(char *buf, size_t cap) {
@@ -222,7 +238,10 @@ size_t readline(char *buf, size_t cap) {
 
 static int out_char(FILE *stream, char c, char **dst, size_t *rem, int *count) {
     if (stream == stdout || stream == stderr || stream == stdin) {
-        if (putchar((unsigned char)c) < 0) return -1;
+        g_print_buf[g_print_buf_len++] = c;
+        if (g_print_buf_len >= (int)sizeof(g_print_buf) || c == '\n') {
+            print_buf_flush();
+        }
     } else if (dst && rem) {
         if (*rem > 1) {
             **dst = c;
@@ -414,6 +433,9 @@ int vfprintf(FILE *stream, const char *fmt, va_list ap) {
     va_copy(cp, ap);
     int rc = format_to(stream, 0, 0, fmt, cp);
     va_end(cp);
+    if (stream == stdout || stream == stderr) {
+        print_buf_flush();
+    }
     return rc;
 }
 

@@ -2,6 +2,7 @@
 
 #include <drivers/sata/ata.h>
 #include <lib/string.h>
+#include <sched/thread.h>
 
 typedef struct __attribute__((packed)) {
     uint32_t inodes_count;
@@ -1099,7 +1100,7 @@ int ext4_fs_mount(ext4_fs_t* fs, uint8_t drive_index, uint64_t partition_lba) {
     return 0;
 }
 
-static int ext4_op_mkdir(void* ctx, const char* path) {
+static int ext4_op_mkdir(void* ctx, const char* path, uint16_t mode) {
     ext4_fs_t* fs = (ext4_fs_t*)ctx;
 
     char parent_path[VFS_MAX_PATH];
@@ -1123,9 +1124,13 @@ static int ext4_op_mkdir(void* ctx, const char* path) {
         return -1;
     }
 
+    if (mode == 0) mode = 0755;
+
     ext4_inode_t diri;
     memset(&diri, 0, sizeof(diri));
-    diri.mode = (uint16_t)(EXT4_S_IFDIR | 0755);
+    diri.mode = (uint16_t)(EXT4_S_IFDIR | (mode & 07777u));
+    diri.uid = thread_get_current_uid();
+    diri.gid = thread_get_current_gid();
     diri.flags = EXT4_EXTENTS_FL;
     ext4_extent_init(&diri);
     diri.links_count = 2;
@@ -1178,7 +1183,7 @@ static int ext4_op_mkdir(void* ctx, const char* path) {
     return 0;
 }
 
-static int ext4_create_or_write_file(ext4_fs_t* fs, const char* path, const void* data, size_t len, int create_if_missing) {
+static int ext4_create_or_write_file(ext4_fs_t* fs, const char* path, uint16_t mode, const void* data, size_t len, int create_if_missing) {
     ext4_inode_t file_inode;
     uint32_t file_ino = 0;
 
@@ -1197,9 +1202,13 @@ static int ext4_create_or_write_file(ext4_fs_t* fs, const char* path, const void
         uint32_t existing = 0;
         if (ext4_dir_find(fs, &parent_inode, leaf, &existing, NULL) == 0) return -1;
 
+        if (mode == 0) mode = 0644;
+
         if (ext4_alloc_inode(fs, &file_ino, 0) != 0) return -1;
         memset(&file_inode, 0, sizeof(file_inode));
-        file_inode.mode = (uint16_t)(EXT4_S_IFREG | 0644);
+        file_inode.mode = (uint16_t)(EXT4_S_IFREG | (mode & 07777u));
+        file_inode.uid = thread_get_current_uid();
+        file_inode.gid = thread_get_current_gid();
         file_inode.flags = 0;
         file_inode.links_count = 1;
         if (ext4_write_inode(fs, file_ino, &file_inode) != 0) {
@@ -1220,7 +1229,7 @@ static int ext4_create_or_write_file(ext4_fs_t* fs, const char* path, const void
     return 0;
 }
 
-static int ext4_create_or_write_file_reader(ext4_fs_t* fs, const char* path, size_t len,
+static int ext4_create_or_write_file_reader(ext4_fs_t* fs, const char* path, uint16_t mode, size_t len,
                                             int (*reader)(void* user, size_t offset, void* out, size_t len),
                                             void* user, int create_if_missing) {
     ext4_inode_t file_inode;
@@ -1238,9 +1247,13 @@ static int ext4_create_or_write_file_reader(ext4_fs_t* fs, const char* path, siz
         uint32_t existing = 0;
         if (ext4_dir_find(fs, &parent_inode, leaf, &existing, NULL) == 0) return -1;
 
+        if (mode == 0) mode = 0644;
+
         if (ext4_alloc_inode(fs, &file_ino, 0) != 0) return -1;
         memset(&file_inode, 0, sizeof(file_inode));
-        file_inode.mode = 0x81A4u;
+        file_inode.mode = (uint16_t)(EXT4_S_IFREG | (mode & 07777u));
+        file_inode.uid = thread_get_current_uid();
+        file_inode.gid = thread_get_current_gid();
         file_inode.links_count = 1;
         if (ext4_write_inode(fs, file_ino, &file_inode) != 0) {
             (void)ext4_free_inode(fs, file_ino, 0);
@@ -1260,19 +1273,19 @@ static int ext4_create_or_write_file_reader(ext4_fs_t* fs, const char* path, siz
     return 0;
 }
 
-static int ext4_op_create_file(void* ctx, const char* path, const void* data, size_t len) {
-    return ext4_create_or_write_file((ext4_fs_t*)ctx, path, data, len, 1);
+static int ext4_op_create_file(void* ctx, const char* path, uint16_t mode, const void* data, size_t len) {
+    return ext4_create_or_write_file((ext4_fs_t*)ctx, path, mode, data, len, 1);
 }
 
 static int ext4_op_write_file(void* ctx, const char* path, const void* data, size_t len) {
-    return ext4_create_or_write_file((ext4_fs_t*)ctx, path, data, len, 1);
+    return ext4_create_or_write_file((ext4_fs_t*)ctx, path, 0, data, len, 0);
 }
 
 int ext4_fs_create_file_from_reader(ext4_fs_t* fs, const char* path, size_t len,
                                     int (*reader)(void* user, size_t offset, void* out, size_t len),
                                     void* user) {
     if (!fs || !path || path[0] == '\0') return -1;
-    return ext4_create_or_write_file_reader(fs, path, len, reader, user, 1);
+    return ext4_create_or_write_file_reader(fs, path, 0644, len, reader, user, 1);
 }
 
 static int ext4_op_read_file(void* ctx, const char* path, void* out, size_t out_cap, size_t* out_len) {
@@ -1407,6 +1420,35 @@ static int ext4_op_rename(void* ctx, const char* old_path, const char* new_path)
     return 0;
 }
 
+static int ext4_op_getattr(void* ctx, const char* path, uint16_t* mode, uint32_t* uid, uint32_t* gid) {
+    ext4_fs_t* fs = (ext4_fs_t*)ctx;
+    ext4_inode_t ino;
+    if (ext4_resolve_path(fs, path, &ino, NULL) != 0) return -1;
+    if (mode) *mode = ino.mode & 07777u;
+    if (uid) *uid = ino.uid;
+    if (gid) *gid = ino.gid;
+    return 0;
+}
+
+static int ext4_op_chmod(void* ctx, const char* path, uint16_t mode) {
+    ext4_fs_t* fs = (ext4_fs_t*)ctx;
+    ext4_inode_t ino;
+    uint32_t ino_num;
+    if (ext4_resolve_path(fs, path, &ino, &ino_num) != 0) return -1;
+    ino.mode = (uint16_t)((ino.mode & ~07777u) | (mode & 07777u));
+    return ext4_write_inode(fs, ino_num, &ino);
+}
+
+static int ext4_op_chown(void* ctx, const char* path, uint32_t uid, uint32_t gid) {
+    ext4_fs_t* fs = (ext4_fs_t*)ctx;
+    ext4_inode_t ino;
+    uint32_t ino_num;
+    if (ext4_resolve_path(fs, path, &ino, &ino_num) != 0) return -1;
+    if (uid != (uint32_t)-1) ino.uid = (uint16_t)uid;
+    if (gid != (uint32_t)-1) ino.gid = (uint16_t)gid;
+    return ext4_write_inode(fs, ino_num, &ino);
+}
+
 static const vfs_backend_ops_t g_ext4_ops = {
     .mkdir = ext4_op_mkdir,
     .create_file = ext4_op_create_file,
@@ -1416,6 +1458,9 @@ static const vfs_backend_ops_t g_ext4_ops = {
     .exists = ext4_op_exists,
     .remove = ext4_op_remove,
     .rename = ext4_op_rename,
+    .getattr = ext4_op_getattr,
+    .chmod = ext4_op_chmod,
+    .chown = ext4_op_chown,
 };
 
 const vfs_backend_ops_t* ext4_fs_backend_ops(void) {

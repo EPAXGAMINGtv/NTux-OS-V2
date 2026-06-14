@@ -184,6 +184,7 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 	mkdir -p iso_root/boot/res/backgrounds
 	mkdir -p iso_root/boot/res/modules
 	mkdir -p iso_root/boot/res/icons
+	mkdir -p iso_root/boot/res/fonts
 	cp -v kernel/bin-$(ARCH)/kernel iso_root/boot/
 	cp -v kernel/bin-$(ARCH)/kernel iso_root/boot/recovery/kernel
 	cp -v userspace/bin/hello.elf iso_root/boot/modules/hello.elf
@@ -242,6 +243,10 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 	cp -v userspace/src/lua/ntux_tests/tetris.lua iso_root/boot/modules/tetris.lua
 	cp -rv wallpapers/. iso_root/boot/res/backgrounds/
 	@if [ -d res/icons ]; then cp -rv res/icons/. iso_root/boot/res/icons/; else echo "skip: res/icons (missing)"; fi
+	@if [ -d iso_root/boot/res/fonts ]; then : ; else mkdir -p iso_root/boot/res/fonts; fi
+	@if [ -f /usr/share/fonts/TTF/Hack-Regular.ttf ]; then cp -v /usr/share/fonts/TTF/Hack-Regular.ttf iso_root/boot/res/fonts/Hack-Regular.ttf; \
+	 elif [ -f /tmp/Hack-Regular.ttf ]; then cp -v /tmp/Hack-Regular.ttf iso_root/boot/res/fonts/Hack-Regular.ttf; \
+	 else echo "skip: Hack-Regular.ttf not found"; fi
 	@if [ -f standart.obj ]; then cp -v standart.obj iso_root/boot/res/modules/standart.obj; else echo "skip: standart.obj (missing)"; fi
 	@if [ -f doom.wad ]; then \
 		echo "Copying doom.wad to ISO root as /doom.wad"; \

@@ -1409,12 +1409,14 @@ static int fat_create_entry(fat_fs_t* fs, const char* path, uint8_t attr, const 
     return fat_write_entry_at(fs, &loc, &ne);
 }
 
-static int fat_op_mkdir(void* ctx, const char* path) {
+static int fat_op_mkdir(void* ctx, const char* path, uint16_t mode) {
+    (void)mode;
     fat_fs_t* fs = (fat_fs_t*)ctx;
     return fat_create_entry(fs, path, FAT_ATTR_DIR, NULL, 0);
 }
 
-static int fat_op_create_file(void* ctx, const char* path, const void* data, size_t len) {
+static int fat_op_create_file(void* ctx, const char* path, uint16_t mode, const void* data, size_t len) {
+    (void)mode;
     fat_fs_t* fs = (fat_fs_t*)ctx;
     return fat_create_entry(fs, path, 0, data, len);
 }
@@ -1579,6 +1581,31 @@ static int fat_op_rename(void* ctx, const char* old_path, const char* new_path) 
     return fat_write_entry_at(fs, &loc, &e);
 }
 
+static int fat_op_getattr(void* ctx, const char* path, uint16_t* mode, uint32_t* uid, uint32_t* gid) {
+    fat_fs_t* fs = (fat_fs_t*)ctx;
+    fat_dir_entry_t ent;
+    if (fat_resolve_path(fs, path, &ent, NULL) != 0) return -1;
+    if (mode) *mode = (ent.attr & FAT_ATTR_DIR) ? 0755 : (ent.attr & 0x01 ? 0444 : 0644);
+    if (uid) *uid = 0;
+    if (gid) *gid = 0;
+    return 0;
+}
+
+static int fat_op_chmod(void* ctx, const char* path, uint16_t mode) {
+    (void)ctx;
+    (void)path;
+    (void)mode;
+    return 0;
+}
+
+static int fat_op_chown(void* ctx, const char* path, uint32_t uid, uint32_t gid) {
+    (void)ctx;
+    (void)path;
+    (void)uid;
+    (void)gid;
+    return 0;
+}
+
 static const vfs_backend_ops_t g_fat_ops = {
     .mkdir = fat_op_mkdir,
     .create_file = fat_op_create_file,
@@ -1588,6 +1615,9 @@ static const vfs_backend_ops_t g_fat_ops = {
     .exists = fat_op_exists,
     .remove = fat_op_remove,
     .rename = fat_op_rename,
+    .getattr = fat_op_getattr,
+    .chmod = fat_op_chmod,
+    .chown = fat_op_chown,
 };
 
 const vfs_backend_ops_t* fat_fs_backend_ops(void) {

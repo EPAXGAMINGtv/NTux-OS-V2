@@ -129,6 +129,7 @@ typedef struct {
 
 typedef struct {
     char lines[DESK_TERM_LINES][DESK_TERM_COLS + 1];
+    uint32_t line_colors[DESK_TERM_LINES];
     int line_count;
     char input[256];
     int input_len;

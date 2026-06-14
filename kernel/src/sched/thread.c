@@ -47,6 +47,13 @@ static void thread_init_common(thread_t* t, void (*entry)(void)) {
     strncpy(t->name, "kernel", sizeof(t->name) - 1);
     t->name[sizeof(t->name) - 1] = '\0';
     t->uid = 0;
+    t->euid = 0;
+    t->suid = 0;
+    t->gid = 0;
+    t->egid = 0;
+    t->sgid = 0;
+    t->ngroups = 0;
+    memset(t->groups, 0, sizeof(t->groups));
     t->user_vstart = 0;
     t->user_vend = 0;
     t->cr3 = 0;
@@ -206,4 +213,65 @@ int thread_get_current_tid(void) {
     int tid = current_thread_id;
     if (tid < 0 || tid >= MAX_THREADS || !thread_list[tid]) return -1;
     return tid;
+}
+
+uint32_t thread_get_current_euid(void) {
+    int tid = current_thread_id;
+    if (tid < 0 || tid >= MAX_THREADS || !thread_list[tid]) return 0;
+    return thread_list[tid]->euid;
+}
+
+int thread_set_current_euid(uint32_t euid) {
+    int tid = current_thread_id;
+    if (tid < 0 || tid >= MAX_THREADS || !thread_list[tid]) return -1;
+    thread_list[tid]->euid = euid;
+    return 0;
+}
+
+uint32_t thread_get_current_gid(void) {
+    int tid = current_thread_id;
+    if (tid < 0 || tid >= MAX_THREADS || !thread_list[tid]) return 0;
+    return thread_list[tid]->gid;
+}
+
+int thread_set_current_gid(uint32_t gid) {
+    int tid = current_thread_id;
+    if (tid < 0 || tid >= MAX_THREADS || !thread_list[tid]) return -1;
+    thread_list[tid]->gid = gid;
+    return 0;
+}
+
+uint32_t thread_get_current_egid(void) {
+    int tid = current_thread_id;
+    if (tid < 0 || tid >= MAX_THREADS || !thread_list[tid]) return 0;
+    return thread_list[tid]->egid;
+}
+
+int thread_set_current_egid(uint32_t egid) {
+    int tid = current_thread_id;
+    if (tid < 0 || tid >= MAX_THREADS || !thread_list[tid]) return -1;
+    thread_list[tid]->egid = egid;
+    return 0;
+}
+
+int thread_get_current_groups(uint32_t* out, int max) {
+    int tid = current_thread_id;
+    if (tid < 0 || tid >= MAX_THREADS || !thread_list[tid]) return -1;
+    thread_t* t = thread_list[tid];
+    int n = t->ngroups;
+    if (n > max) n = max;
+    for (int i = 0; i < n; ++i)
+        out[i] = t->groups[i];
+    return t->ngroups;
+}
+
+int thread_set_current_groups(const uint32_t* groups, int n) {
+    int tid = current_thread_id;
+    if (tid < 0 || tid >= MAX_THREADS || !thread_list[tid]) return -1;
+    if (n > USER_MAX_GROUPS) n = USER_MAX_GROUPS;
+    thread_t* t = thread_list[tid];
+    t->ngroups = n;
+    for (int i = 0; i < n; ++i)
+        t->groups[i] = groups[i];
+    return 0;
 }
