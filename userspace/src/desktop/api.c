@@ -503,7 +503,7 @@ static void deskapi_handle_image_raw(const uint8_t* raw, uint64_t len) {
 }
 
 int window_ipc_process(void) {
-    uint8_t raw[WINDOW_MAX_MSG + 1];
+    static uint8_t raw[WINDOW_MAX_MSG + 1];
     uint64_t len = 0;
     int processed = 0;
     while (sys_deskapi_pop((char*)raw, sizeof(raw), &len) == 0) {

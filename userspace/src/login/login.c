@@ -6,6 +6,21 @@
 #include <font8x8_basic.h>
 #include <image.h>
 
+#define AUDIO_TEST_SAMPLES 22050 /* 0.25s stereo @ 44100 Hz = 22050 int16_t * 2 bytes = 44100 bytes */
+
+static int16_t g_beep_buf[AUDIO_TEST_SAMPLES];
+
+static void audio_test_beep(void) {
+    memset(g_beep_buf, 0, sizeof(g_beep_buf));
+    for (int i = 0; i < AUDIO_TEST_SAMPLES; i += 2) {
+        int16_t v = ((i / 128) & 1) ? 6000 : -6000;
+        g_beep_buf[i] = v;
+        g_beep_buf[i + 1] = v;
+    }
+    sys_audio_stop();
+    sys_audio_play(g_beep_buf, AUDIO_TEST_SAMPLES);
+}
+
 #define LOGIN_MAX_USERS 16
 
 typedef struct {
@@ -599,6 +614,8 @@ void ntux_user_entry(void) {
     g_frame = (uint32_t*)malloc(g_pixels * sizeof(uint32_t));
     g_bg = (uint32_t*)malloc(g_pixels * sizeof(uint32_t));
     if (!g_frame || !g_bg) sys_exit(1);
+
+    audio_test_beep();
 
     (void)users_load_db();
     g_user_sel = 0;

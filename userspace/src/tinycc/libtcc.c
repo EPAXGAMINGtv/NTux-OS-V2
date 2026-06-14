@@ -697,6 +697,12 @@ LIBTCCAPI void tcc_set_error_func(TCCState *s, void *error_opaque, TCCErrorFunc 
     s->error_func = error_func;
 }
 
+LIBTCCAPI void tcc_set_progress_func(TCCState *s, void *progress_opaque, TCCProgressFunc *progress_func)
+{
+    s->progress_opaque = progress_opaque;
+    s->progress_func = progress_func;
+}
+
 /* error without aborting current compilation */
 PUB_FUNC int _tcc_error_noabort(const char *fmt, ...)
 {

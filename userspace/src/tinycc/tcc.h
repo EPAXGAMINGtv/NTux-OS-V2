@@ -858,7 +858,11 @@ struct TCCState {
     jmp_buf error_jmp_buf;
     int nb_errors;
 
-    /* output file for preprocessing (-E) */
+    void *progress_opaque;
+    void (*progress_func)(void *opaque, const char *stage, int percent);
+
+    /* output file for preprocessing (CString), only used if output_type
+       is TCC_OUTPUT_PREPROCESS */
     FILE *ppfp;
 
     /* for -MD/-MF: collected dependencies for this compilation */

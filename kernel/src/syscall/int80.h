@@ -181,6 +181,9 @@ enum {
     INT80_SETSID = 136,
     INT80_GETPGID = 137,
     INT80_KBD_SET_LAYOUT = 140,
+    INT80_AUDIO_PLAY = 141,
+    INT80_AUDIO_STOP = 142,
+    INT80_AUDIO_STATUS = 143,
 };
 
 typedef struct {

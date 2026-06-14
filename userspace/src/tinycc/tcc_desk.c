@@ -159,34 +159,13 @@ static void do_compile(const char* filename, const char* out_manual) {
     }
     tcc_set_error_func(s, NULL, tcc_error_func);
     
-    // Detect TCC base path (some environments have an extra /boot level)
-    const char* tcc_base = "/boot/tcc";
-    if (sys_fs_exists("/boot/boot/tcc") == 1) {
-        tcc_base = "/boot/boot/tcc";
-    }
-
-    // Set library and include paths
-    tcc_set_lib_path(s, tcc_base);
-    
-    char inc_path[256];
-    char lib_path[256];
-    char sys_inc_path[256];
-    
-    strncpy(inc_path, tcc_base, sizeof(inc_path));
-    strcat(inc_path, "/include");
-    tcc_add_include_path(s, inc_path);
-    
-    // Also check for system includes in /boot/include or /boot/boot/include
-    const char* boot_base = "/boot";
-    if (sys_fs_exists("/boot/boot/include") == 1) boot_base = "/boot/boot";
-    
-    strncpy(sys_inc_path, boot_base, sizeof(sys_inc_path));
-    strcat(sys_inc_path, "/include");
-    tcc_add_include_path(s, sys_inc_path);
-    
-    strncpy(lib_path, tcc_base, sizeof(lib_path));
-    strcat(lib_path, "/lib");
-    tcc_add_library_path(s, lib_path);
+    // Add include/lib paths for all possible mount points
+    tcc_add_include_path(s, "/iso0/boot/tcc/include");
+    tcc_add_include_path(s, "/fat0/boot/tcc/include");
+    tcc_add_include_path(s, "/boot/tcc/include");
+    tcc_add_library_path(s, "/iso0/boot/tcc/lib");
+    tcc_add_library_path(s, "/fat0/boot/tcc/lib");
+    tcc_add_library_path(s, "/boot/tcc/lib");
     
     tcc_set_output_type(s, TCC_OUTPUT_EXE);
     
@@ -219,6 +198,7 @@ static void do_compile(const char* filename, const char* out_manual) {
     }
     
     tcc_delete(s);
+    redraw();
 }
 
 static void do_ls() {

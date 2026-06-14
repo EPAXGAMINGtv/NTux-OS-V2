@@ -396,7 +396,7 @@ int window_set_image_raw(window_t id, int w, int h, int channels, const void* da
     size_t max_payload = WINDOW_MAX_MSG - header;
     const uint8_t* src = (const uint8_t*)data;
     uint32_t offset = 0;
-    uint8_t buf[WINDOW_MAX_MSG];
+    static uint8_t buf[WINDOW_MAX_MSG];
 
     while (offset < len) {
         uint32_t chunk = (uint32_t)((len - offset) > max_payload ? max_payload : (len - offset));

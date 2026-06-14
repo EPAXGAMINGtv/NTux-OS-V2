@@ -1,12 +1,12 @@
 #ifndef TCC_CONFIG_H
 #define TCC_CONFIG_H
 
-/* NTux TCC runtime layout */
+/* NTux TCC runtime layout - search all possible mount points */
 #define CONFIG_TCCDIR "/boot/tcc"
 #define CONFIG_SYSROOT ""
-#define CONFIG_TCC_SYSINCLUDEPATHS "{B}/include"
-#define CONFIG_TCC_LIBPATHS "{B}/lib"
-#define CONFIG_TCC_CRTPREFIX "{B}/lib"
+#define CONFIG_TCC_SYSINCLUDEPATHS "{B}/include:/iso0/boot/tcc/include:/fat0/boot/tcc/include"
+#define CONFIG_TCC_LIBPATHS "{B}/lib:/iso0/boot/tcc/lib:/fat0/boot/tcc/lib"
+#define CONFIG_TCC_CRTPREFIX "/iso0/boot/tcc/lib:/fat0/boot/tcc/lib:/boot/tcc/lib"
 #define CONFIG_TCC_ELFINTERP "-"
 
 /* Keep the build lean and avoid missing platform deps. */

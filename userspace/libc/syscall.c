@@ -157,6 +157,18 @@ long sys_kbd_set_layout(const char* path) {
     return ntux_syscall3(INT80_KBD_SET_LAYOUT, (uint64_t)(uintptr_t)path, 0, 0);
 }
 
+long sys_audio_play(const int16_t* samples, uint32_t count) {
+    return ntux_syscall3(INT80_AUDIO_PLAY, (uint64_t)(uintptr_t)samples, (uint64_t)count, 0);
+}
+
+long sys_audio_stop(void) {
+    return ntux_syscall3(INT80_AUDIO_STOP, 0, 0, 0);
+}
+
+long sys_audio_status(void) {
+    return ntux_syscall3(INT80_AUDIO_STATUS, 0, 0, 0);
+}
+
 uint64_t sys_get_ticks(void) {
     return (uint64_t)ntux_syscall3(INT80_GET_TICKS, 0, 0, 0);
 }

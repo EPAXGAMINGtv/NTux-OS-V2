@@ -192,6 +192,7 @@ DOOM_SRC := \
 	$(DOOM_DIR)/i_joystick.c \
 	$(DOOM_DIR)/i_scale.c \
 	$(DOOM_DIR)/i_sound.c \
+	$(DOOM_DIR)/i_ntuxsound.c \
 	$(DOOM_DIR)/i_system.c \
 	$(DOOM_DIR)/i_timer.c \
 	$(DOOM_DIR)/memio.c \

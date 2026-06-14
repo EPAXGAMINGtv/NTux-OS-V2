@@ -47,7 +47,23 @@ static int g_font_line_height = 10;
 static int g_font_ascent = 8;
 static ttf_font_t* g_ttf_font = 0;
 
+static void font_cache_clear(void) {
+    for (int i = 0; i < FONT_CACHE_CHARS; ++i) {
+        if (g_font_cache[i].bitmap) {
+            free(g_font_cache[i].bitmap);
+            g_font_cache[i].bitmap = 0;
+        }
+        g_font_cache[i].w = 0;
+        g_font_cache[i].h = 0;
+    }
+    if (g_ttf_font) {
+        ttf_free(g_ttf_font);
+        g_ttf_font = 0;
+    }
+}
+
 static int font_cache_load(const char* path, int px_size) {
+    font_cache_clear();
     uint64_t fsize = 0;
     if (sys_fs_exists(path) <= 0) return -1;
     char* buf = 0;
@@ -4740,30 +4756,19 @@ static void draw_window(desk_window_t* w, int focused) {
         if (y < ty + g_font_ascent + 4) y = ty + g_font_ascent + 4;
         if (y > max_y) y = max_y;
         if (ts) {
-            char prompt[DESK_TERM_COLS + 80];
             int uid = (int)sys_get_uid();
             char user_str[16];
             snprintf(user_str, sizeof(user_str), "user%u", uid ? uid : 0);
-            (void)str_append(prompt, sizeof(prompt), "+--");
-            (void)str_append(prompt, sizeof(prompt), user_str);
-            (void)str_append(prompt, sizeof(prompt), " @ ");
-            (void)str_append(prompt, sizeof(prompt), ts->cwd);
-            (void)str_append(prompt, sizeof(prompt), " :: ");
-            ntux_time_t t;
-            char time_str[16];
-            if (sys_get_time(&t) == 0) {
-                int n = snprintf(time_str, sizeof(time_str), "%02u:%02u:%02u",
-                    (unsigned)t.hour, (unsigned)t.minute, (unsigned)t.second);
-                if (n > 0) str_append(prompt, sizeof(prompt), time_str);
-            }
-            draw_text(tx, y, prompt, 0xFF6A7A8Au);
             int cx = tx;
             for (const char* p = "+--"; *p; ++p) { draw_char(cx, y, *p, 0xFF6A7A8Au); cx += g_font_cache[(uint8_t)*p].advance_x; }
             for (const char* p = user_str; *p; ++p) { draw_char(cx, y, *p, 0xFF4EC9FFu); cx += g_font_cache[(uint8_t)*p].advance_x; }
             for (const char* p = " @ "; *p; ++p) { draw_char(cx, y, *p, 0xFF6A7A8Au); cx += g_font_cache[(uint8_t)*p].advance_x; }
             for (const char* p = ts->cwd; *p; ++p) { draw_char(cx, y, *p, 0xFF39FF88u); cx += g_font_cache[(uint8_t)*p].advance_x; }
             for (const char* p = " :: "; *p; ++p) { draw_char(cx, y, *p, 0xFF6A7A8Au); cx += g_font_cache[(uint8_t)*p].advance_x; }
-            if (sys_get_time(&t) == 0) {
+            {
+                ntux_time_t t;
+                desktop_get_local_time(&t);
+                char time_str[16];
                 int n = snprintf(time_str, sizeof(time_str), "%02u:%02u:%02u",
                     (unsigned)t.hour, (unsigned)t.minute, (unsigned)t.second);
                 if (n > 0) for (const char* p = time_str; *p; ++p) { draw_char(cx, y, *p, 0xFFFFD166u); cx += g_font_cache[(uint8_t)*p].advance_x; }

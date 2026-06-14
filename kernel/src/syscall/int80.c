@@ -18,6 +18,7 @@
 #include <net_defs.h>
 #include <interrupt/timer.h>
 #include <arch/x86_64/io.h>
+#include <drivers/audio/intel_hda.h>
 
 #include <lib/info.h>
 #include <mm/kmalloc.h>
@@ -1582,6 +1583,24 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 return 0;
             }
             regs->rax = (uint64_t)deskapi_dialog_push(tid, code, text);
+            return 0;
+        }
+        case INT80_AUDIO_PLAY: {
+            const int16_t* buf = (const int16_t*)(uintptr_t)regs->rdi;
+            uint32_t count = (uint32_t)regs->rsi;
+            if (!buf || count == 0 || !user_ptr_range_ok(buf, count * sizeof(int16_t))) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (uint64_t)audio_play(buf, count);
+            return 0;
+        }
+        case INT80_AUDIO_STOP: {
+            regs->rax = (uint64_t)audio_stop();
+            return 0;
+        }
+        case INT80_AUDIO_STATUS: {
+            regs->rax = audio_is_playing() ? 1u : 0u;
             return 0;
         }
         default:

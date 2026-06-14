@@ -30,6 +30,10 @@ LIBTCCAPI void tcc_set_lib_path(TCCState *s, const char *path);
 typedef void TCCErrorFunc(void *opaque, const char *msg);
 LIBTCCAPI void tcc_set_error_func(TCCState *s, void *error_opaque, TCCErrorFunc *error_func);
 
+/* set progress callback (optional). stage describes current phase, percent 0-100 */
+typedef void TCCProgressFunc(void *opaque, const char *stage, int percent);
+LIBTCCAPI void tcc_set_progress_func(TCCState *s, void *progress_opaque, TCCProgressFunc *progress_func);
+
 /* set options as from command line (multiple supported) */
 LIBTCCAPI int tcc_set_options(TCCState *s, const char *str);
 

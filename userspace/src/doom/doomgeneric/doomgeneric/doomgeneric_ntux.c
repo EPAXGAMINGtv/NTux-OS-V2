@@ -198,7 +198,7 @@ void DG_SetWindowTitle(const char* title) {
     (void)title;
 }
 
-static int doom_main(int argc, char **argv) {
+static void doom_main(int argc, char **argv) {
     // Clear screen so the status line is at the top before Doom starts.
     sys_clear_screen(0x00000000);
     sys_set_text_color(0xFFFFFFFF);
@@ -234,11 +234,8 @@ static int doom_main(int argc, char **argv) {
             "doom",
             "-iwad",
             (char*)iwad,
-            "-nosound",
-            "-nosfx",
-            "-nomusic",
         };
-        doomgeneric_Create(6, default_argv);
+        doomgeneric_Create(3, default_argv);
     } else {
         doomgeneric_Create(argc, argv);
     }
