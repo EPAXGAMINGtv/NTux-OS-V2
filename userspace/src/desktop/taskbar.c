@@ -1,9 +1,9 @@
 #include "taskbar.h"
-
-#include <string.h>
-#include <stdio.h>
-
+#include "desktop.h"
 #include "desktop_internal.h"
+#include <syscall.h>
+#include <stdio.h>
+#include <string.h>
 
 static int in_rect_local(int x, int y, int rx, int ry, int rw, int rh) {
     return x >= rx && y >= ry && x < rx + rw && y < ry + rh;
@@ -222,6 +222,7 @@ static void taskbar_draw_clock(int x, int y) {
     clock[4] = '-'; clock[5] = ':'; clock[6] = '-'; clock[7] = '-';
     clock[8] = '\0';
     if (sys_get_time(&t) == 0) {
+        desktop_get_local_time(&t);
         clock[0] = (char)('0' + ((t.hour / 10u) % 10u));
         clock[1] = (char)('0' + (t.hour % 10u));
         clock[3] = (char)('0' + ((t.minute / 10u) % 10u));

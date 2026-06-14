@@ -145,6 +145,9 @@ static uint8_t g_screensaver_active = 0;
 static uint8_t g_ticks_advancing = 1;
 static uint64_t g_idle_grace_until = 0;
 static uint64_t g_hz_cached = 0;
+static int g_tz_offset_minutes = 0;
+static char g_last_font_path[256] = "";
+static uint64_t g_last_config_reload = 0;
 
 #define NTUX_THREAD_TERMINATED 3u
 static uint64_t g_boot_splash_until = 0;
@@ -461,6 +464,8 @@ static void wallpaper_scan_all(void);
 static int gallery_image_count(void);
 static void wallpaper_set_and_save(const char* path);
 static void wallpaper_thumbs_clear(void);
+void desktop_reload_config(void);
+void desktop_get_local_time(ntux_time_t* t);
 static void wallpaper_thumb_try_load(int idx, int max_w, int max_h);
 static void draw_analog_clock_window(const desk_window_t* w);
 void draw_text(int x, int y, const char* s, uint32_t c);
@@ -7570,6 +7575,7 @@ static void draw_analog_clock_window(const desk_window_t* w) {
     draw_rect(cx - r, cy - r, 2 * r, 2 * r, 0xFF1F3E5Du);
 
     if (sys_get_time(&t) == 0) {
+        desktop_get_local_time(&t);
         int h_idx = ((int)(t.hour % 12u) * 5) + ((int)t.minute / 12);
         int m_idx = (int)t.minute % 60;
         int s_idx = (int)t.second % 60;
@@ -9960,6 +9966,64 @@ static void init_windows(void) {
     wallpaper_thumbs_clear();
 }
 
+static int tz_offset_for_name(const char* name) {
+    if (!name || !name[0]) return 0;
+    if (strcmp(name, "UTC") == 0) return 0;
+    if (strcmp(name, "Europe/Berlin") == 0) return 60;
+    if (strcmp(name, "Europe/London") == 0) return 0;
+    if (strcmp(name, "Europe/Paris") == 0) return 60;
+    if (strcmp(name, "America/New_York") == 0) return -300;
+    if (strcmp(name, "America/Los_Angeles") == 0) return -480;
+    if (strcmp(name, "America/Sao_Paulo") == 0) return -180;
+    if (strcmp(name, "Asia/Tokyo") == 0) return 540;
+    if (strcmp(name, "Asia/Shanghai") == 0) return 480;
+    return 0;
+}
+
+static void trim_newline(char* s) {
+    if (!s) return;
+    size_t n = strlen(s);
+    while (n > 0 && (s[n-1] == '\n' || s[n-1] == '\r' || s[n-1] == ' ')) s[--n] = '\0';
+}
+
+void desktop_reload_config(void) {
+    char buf[256];
+    uint64_t len = 0;
+    if (sys_fs_read_file("/conf/time.conf", buf, sizeof(buf) - 1, &len) == 0 && len > 0) {
+        buf[len] = '\0';
+        trim_newline(buf);
+        g_tz_offset_minutes = tz_offset_for_name(buf);
+    }
+
+    if (sys_fs_read_file("/conf/kbdlout.conf", buf, sizeof(buf) - 1, &len) == 0 && len > 0) {
+        buf[len] = '\0';
+        trim_newline(buf);
+        (void)sys_kbd_set_layout(buf);
+    }
+
+    if (sys_fs_read_file("/conf/font.conf", buf, sizeof(buf) - 1, &len) == 0 && len > 0) {
+        buf[len] = '\0';
+        trim_newline(buf);
+        if (strcmp(buf, g_last_font_path) != 0) {
+            snprintf(g_last_font_path, sizeof(g_last_font_path), "%s", buf);
+            if (buf[0] && sys_fs_exists(buf) > 0) {
+                font_cache_load(buf, FONT_PX_SIZE);
+                g_desktop_dirty = 1;
+            }
+        }
+    }
+}
+
+void desktop_get_local_time(ntux_time_t* t) {
+    if (!t) return;
+    if (sys_get_time(t) != 0) return;
+    int total = (int)t->minute + g_tz_offset_minutes;
+    int carry = (total >= 0) ? (total / 60) : ((total - 59) / 60);
+    t->minute = (uint8_t)((total - carry * 60 + 60) % 60);
+    int h = (int)t->hour + carry;
+    t->hour = (uint8_t)((h % 24 + 24) % 24);
+}
+
 int desktop_init(void) {
     if (sys_fb_get_info(&g_fb) != 0 || g_fb.width == 0 || g_fb.height == 0) {
         return -1;
@@ -10027,6 +10091,7 @@ int desktop_init(void) {
             if (n > 0) snprintf(font_path, sizeof(font_path), "%s", font_cfg);
         }
         font_cache_load(font_path, FONT_PX_SIZE);
+        snprintf(g_last_font_path, sizeof(g_last_font_path), "%s", font_path);
     }
     return 0;
 }
@@ -10055,6 +10120,7 @@ static void handle_namebox_input(void) {
 }
 
 void desktop_run(void) {
+    desktop_reload_config();
     for (;;) {
         uint64_t now = sys_get_ticks();
         uint64_t now_sec = desktop_now_seconds();
@@ -10070,6 +10136,10 @@ void desktop_run(void) {
                 g_desktop_dirty = 1;
             }
             g_last_storage_rescan = now;
+        }
+        if (g_last_config_reload == 0 || now - g_last_config_reload >= 200u) {
+            desktop_reload_config();
+            g_last_config_reload = now;
         }
         if (g_screensaver_active) {
             if (!screensaver_is_running()) {

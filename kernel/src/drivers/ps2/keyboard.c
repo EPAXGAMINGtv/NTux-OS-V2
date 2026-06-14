@@ -6,7 +6,11 @@
 #include <drivers/framebuffer/kprint.h>
 #include "ps2.h"
 #include "ringbuffer.h"
-#include "scancode_table_de.h"
+#include "scancode_tables.h"
+
+static const char* g_scancode_ascii = scancode_ascii_de;
+static const char* g_scancode_ascii_shift = scancode_ascii_shift_de;
+static int g_layout_idx = 1;
 
 
 ringbuffer_t kb_buffer;
@@ -102,7 +106,7 @@ static void keyboard_apply_scancode(uint8_t key, bool released, bool extended) {
     if (key == 0x1D) ctrl_pressed = !released;
     if (key == 0x38) alt_pressed = !released;
     if (!released) {
-        char c = shift_pressed ? scancode_ascii_shift[key] : scancode_ascii[key];
+        char c = shift_pressed ? g_scancode_ascii_shift[key] : g_scancode_ascii[key];
         if (ctrl_pressed) {
             if (c >= 'a' && c <= 'z') {
                 c = (char)(c & 0x1F);
@@ -168,6 +172,21 @@ void keyboard_irq_handler(void) {
 
 uint64_t keyboard_get_irq_hits(void) {
     return g_keyboard_irq_hits;
+}
+
+int keyboard_set_layout(const char* name) {
+    int idx = scancode_layout_index(name);
+    if (idx < 0) return -1;
+    g_layout_idx = idx;
+    g_scancode_ascii = g_scancode_layouts[idx].table;
+    g_scancode_ascii_shift = g_scancode_layouts[idx].table_shift;
+    kprint_serial_only("[KBD] layout switched\n");
+    return 0;
+}
+
+const char* keyboard_get_layout_name(void) {
+    if (g_layout_idx < 0 || g_layout_idx >= g_scancode_layout_count) return "de";
+    return g_scancode_layouts[g_layout_idx].name;
 }
 
 void keyboard_init() {

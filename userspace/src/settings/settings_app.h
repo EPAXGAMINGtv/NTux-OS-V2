@@ -5,10 +5,13 @@
 #include <window.h>
 
 #define SET_WIN_W 760
-#define SET_WIN_H 460
+#define SET_WIN_H 580
 
 #define TIME_CONF_PATH "/conf/time.conf"
 #define KBD_CONF_PATH  "/conf/kbdlout.conf"
+#define FONT_CONF_PATH "/conf/font.conf"
+
+#define FONT_PATH_MAX 256
 
 typedef struct {
     int tz_sel;
@@ -18,6 +21,10 @@ typedef struct {
     int kbd_open;
     int tz_scroll;
     int kbd_scroll;
+    char font_path[FONT_PATH_MAX];
+    int font_sel;
+    int font_open;
+    int font_scroll;
     char status[64];
     uint64_t status_until;
 } settings_state_t;
@@ -32,6 +39,8 @@ int settings_timezone_count(void);
 const char* settings_timezone_at(int idx);
 int settings_kbd_count(void);
 const char* settings_kbd_at(int idx);
+int settings_font_count(void);
+const char* settings_font_at(int idx);
 
 void settings_load_state(settings_state_t* st);
 int settings_save_state(const settings_state_t* st);

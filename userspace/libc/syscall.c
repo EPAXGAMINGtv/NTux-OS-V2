@@ -153,6 +153,10 @@ long sys_kbd_consume_super_press(void) {
     return ntux_syscall3(INT80_KBD_CONSUME_SUPER_PRESS, 0, 0, 0);
 }
 
+long sys_kbd_set_layout(const char* path) {
+    return ntux_syscall3(INT80_KBD_SET_LAYOUT, (uint64_t)(uintptr_t)path, 0, 0);
+}
+
 uint64_t sys_get_ticks(void) {
     return (uint64_t)ntux_syscall3(INT80_GET_TICKS, 0, 0, 0);
 }

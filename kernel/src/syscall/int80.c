@@ -858,6 +858,15 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = input_consume_super_press() ? 1u : 0u;
             return 0;
         }
+        case INT80_KBD_SET_LAYOUT: {
+            const char* name = (const char*)(uintptr_t)regs->rdi;
+            if (!user_cstr_ok(name, 32u) || !name[0]) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+            regs->rax = (keyboard_set_layout(name) == 0) ? 0u : (uint64_t)-1;
+            return 0;
+        }
         case INT80_FB_GET_INFO: {
             int80_fb_info_t* out = (int80_fb_info_t*)(uintptr_t)regs->rdi;
             if (!out || !user_ptr_range_ok(out, sizeof(*out))) {

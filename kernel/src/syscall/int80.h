@@ -180,6 +180,7 @@ enum {
     INT80_GETPPID = 135,
     INT80_SETSID = 136,
     INT80_GETPGID = 137,
+    INT80_KBD_SET_LAYOUT = 140,
 };
 
 typedef struct {

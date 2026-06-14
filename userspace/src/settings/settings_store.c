@@ -1,13 +1,13 @@
 #include "settings_app.h"
 #include <string.h>
+#include <stdio.h>
 #include <syscall.h>
 
 static void trim_line(char* s) {
     if (!s) return;
     size_t n = strlen(s);
     while (n > 0 && (s[n - 1] == '\n' || s[n - 1] == '\r' || s[n - 1] == ' ' || s[n - 1] == '\t')) {
-        s[n - 1] = '\0';
-        --n;
+        s[n - 1] = '\0'; --n;
     }
     size_t i = 0;
     while (s[i] == ' ' || s[i] == '\t') i++;
@@ -41,36 +41,35 @@ static int write_conf(const char* path, const char* value) {
     if (strcmp(path, KBD_CONF_PATH) == 0) {
         return (sys_fs_create_file("/conf", "kbdlout.conf", value, len) == 0) ? 0 : -1;
     }
+    if (strcmp(path, FONT_CONF_PATH) == 0) {
+        return (sys_fs_create_file("/conf", "font.conf", value, len) == 0) ? 0 : -1;
+    }
     return -1;
 }
 
 void settings_load_state(settings_state_t* st) {
     char tmp[128];
     if (!st) return;
-    st->tz_sel = 0;
-    st->kbd_sel = 0;
-    st->focus = 0;
-    st->tz_open = 0;
-    st->kbd_open = 0;
-    st->tz_scroll = 0;
-    st->kbd_scroll = 0;
-    st->status[0] = '\0';
-    st->status_until = 0;
+    st->tz_sel = 0; st->kbd_sel = 0; st->focus = 0;
+    st->tz_open = 0; st->kbd_open = 0;
+    st->tz_scroll = 0; st->kbd_scroll = 0;
+    st->font_sel = 0; st->font_open = 0; st->font_scroll = 0;
+    snprintf(st->font_path, sizeof(st->font_path), "%s", settings_font_at(0));
+    st->status[0] = '\0'; st->status_until = 0;
 
     if (read_conf(TIME_CONF_PATH, tmp, sizeof(tmp)) == 0) {
         for (int i = 0; i < settings_timezone_count(); ++i) {
-            if (strcmp(tmp, settings_timezone_at(i)) == 0) {
-                st->tz_sel = i;
-                break;
-            }
+            if (strcmp(tmp, settings_timezone_at(i)) == 0) { st->tz_sel = i; break; }
         }
     }
     if (read_conf(KBD_CONF_PATH, tmp, sizeof(tmp)) == 0) {
         for (int i = 0; i < settings_kbd_count(); ++i) {
-            if (strcmp(tmp, settings_kbd_at(i)) == 0) {
-                st->kbd_sel = i;
-                break;
-            }
+            if (strcmp(tmp, settings_kbd_at(i)) == 0) { st->kbd_sel = i; break; }
+        }
+    }
+    if (read_conf(FONT_CONF_PATH, st->font_path, sizeof(st->font_path)) == 0) {
+        for (int i = 0; i < settings_font_count(); ++i) {
+            if (strcmp(st->font_path, settings_font_at(i)) == 0) { st->font_sel = i; break; }
         }
     }
 }
@@ -79,7 +78,8 @@ int settings_save_state(const settings_state_t* st) {
     if (!st) return -1;
     int ok1 = write_conf(TIME_CONF_PATH, settings_timezone_at(st->tz_sel)) == 0;
     int ok2 = write_conf(KBD_CONF_PATH, settings_kbd_at(st->kbd_sel)) == 0;
-    return (ok1 && ok2) ? 0 : -1;
+    int ok3 = write_conf(FONT_CONF_PATH, st->font_path) == 0;
+    return (ok1 && ok2 && ok3) ? 0 : -1;
 }
 
 void settings_show_status(settings_state_t* st, const char* msg) {

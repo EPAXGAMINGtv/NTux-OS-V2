@@ -21,6 +21,8 @@ int keyboard_consume_super_press(void);
 int keyboard_consume_key_press(uint8_t key);
 void keyboard_inject_scancode_set1(uint8_t scancode, bool pressed);
 void keyboard_inject_char(char c);
+int keyboard_set_layout(const char* name);
+const char* keyboard_get_layout_name(void);
 
 extern uint8_t shift_pressed;
 extern uint8_t ctrl_pressed;

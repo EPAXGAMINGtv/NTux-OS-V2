@@ -1,5 +1,6 @@
 #include "settings_app.h"
 #include <string.h>
+#include <stdio.h>
 #include <syscall.h>
 
 static void clamp_scroll_to_sel(int* scroll, int count, int visible, int sel) {
@@ -58,10 +59,11 @@ void ntux_user_entry(void) {
         key_last[0x4D] = (uint8_t)(sys_kbd_is_pressed(0x4D) > 0);
 
         if (tab_edge) {
-            st.focus = (st.focus + 1) % 4;
-            if (st.focus >= 2) {
+            st.focus = (st.focus + 1) % 5;
+            if (st.focus >= 3) {
                 st.tz_open = 0;
                 st.kbd_open = 0;
+                st.font_open = 0;
             }
         }
         if (left_edge) {
@@ -73,26 +75,40 @@ void ntux_user_entry(void) {
         if (up_edge) {
             if (st.focus == 0 && st.tz_sel > 0) st.tz_sel--;
             if (st.focus == 1 && st.kbd_sel > 0) st.kbd_sel--;
+            if (st.focus == 3 && st.font_sel > 0) {
+                st.font_sel--;
+                snprintf(st.font_path, FONT_PATH_MAX, "%s", settings_font_at(st.font_sel));
+            }
         }
         if (down_edge) {
             if (st.focus == 0 && st.tz_sel + 1 < settings_timezone_count()) st.tz_sel++;
             if (st.focus == 1 && st.kbd_sel + 1 < settings_kbd_count()) st.kbd_sel++;
+            if (st.focus == 3 && st.font_sel + 1 < settings_font_count()) {
+                st.font_sel++;
+                snprintf(st.font_path, FONT_PATH_MAX, "%s", settings_font_at(st.font_sel));
+            }
         }
 
         if (enter_edge || space_edge) {
             if (st.focus == 0) {
                 st.tz_open = !st.tz_open;
                 st.kbd_open = 0;
+                st.font_open = 0;
             } else if (st.focus == 1) {
                 st.kbd_open = !st.kbd_open;
                 st.tz_open = 0;
+                st.font_open = 0;
+            } else if (st.focus == 3) {
+                st.font_open = !st.font_open;
+                st.tz_open = 0;
+                st.kbd_open = 0;
             } else if (st.focus == 2) {
                 if (settings_save_state(&st) == 0) {
-                    settings_show_status(&st, "Saved /conf/time.conf and /conf/kbdlout.conf");
+                    settings_show_status(&st, "Saved time, kbd, and font config");
                 } else {
                     settings_show_status(&st, "Save failed");
                 }
-            } else if (st.focus == 3) {
+            } else if (st.focus == 4) {
                 break;
             }
         }
@@ -102,16 +118,19 @@ void ntux_user_entry(void) {
                 st.tz_scroll -= st_in.mouse_scroll;
             } else if (st.kbd_open) {
                 st.kbd_scroll -= st_in.mouse_scroll;
+            } else if (st.font_open) {
+                st.font_scroll -= st_in.mouse_scroll;
             }
         }
         clamp_scroll_to_sel(&st.tz_scroll, settings_timezone_count(), 7, st.tz_sel);
         clamp_scroll_to_sel(&st.kbd_scroll, settings_kbd_count(), 7, st.kbd_sel);
+        clamp_scroll_to_sel(&st.font_scroll, settings_font_count(), 7, st.font_sel);
 
         if (st_in.mouse_left && !last_left) {
             settings_action_t act = settings_handle_click(&st, st_in.mouse_x, st_in.mouse_y);
             if (act == SETTINGS_ACT_SAVE) {
                 if (settings_save_state(&st) == 0) {
-                    settings_show_status(&st, "Saved /conf/time.conf and /conf/kbdlout.conf");
+                    settings_show_status(&st, "Saved time, kbd, and font config");
                 } else {
                     settings_show_status(&st, "Save failed");
                 }

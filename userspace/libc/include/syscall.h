@@ -95,7 +95,8 @@ enum {
     INT80_GETGRGID = 134,
     INT80_GETPPID = 135,
     INT80_SETSID = 136,
-    INT80_GETPGID = 137
+    INT80_GETPGID = 137,
+    INT80_KBD_SET_LAYOUT = 140,
 };
 
 long ntux_syscall3(uint64_t nr, uint64_t a0, uint64_t a1, uint64_t a2);
@@ -252,6 +253,7 @@ long sys_mouse_get_state(ntux_mouse_state_t* out_state);
 long sys_kbd_is_pressed(uint8_t scancode);
 long sys_kbd_get_state(uint8_t* out, uint64_t len);
 long sys_kbd_consume_super_press(void);
+long sys_kbd_set_layout(const char* name);
 uint64_t sys_get_ticks(void);
 void sys_wait_ticks(uint64_t ticks);
 long sys_clear_screen(uint32_t color);
