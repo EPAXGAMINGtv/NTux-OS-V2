@@ -1,0 +1,7 @@
+#ifndef USER_SYS_PARAM_H
+#define USER_SYS_PARAM_H
+
+#define MAXPATHLEN 4096
+#define MAXHOSTNAMELEN 256
+
+#endif
