@@ -1,4 +1,5 @@
 #include <syscall.h>
+#include <stddef.h>
 
 long ntux_syscall3(uint64_t nr, uint64_t a0, uint64_t a1, uint64_t a2) {
     uint64_t ret;
@@ -391,6 +392,14 @@ long sys_setsid(void) {
 
 long sys_getpgid(void) {
     return ntux_syscall3(INT80_GETPGID, 0, 0, 0);
+}
+
+void *sys_umalloc(size_t size) {
+    return (void *)(uintptr_t)ntux_syscall3(INT80_UMALLOC, (uint64_t)size, 0, 0);
+}
+
+void sys_ufree(void *ptr) {
+    ntux_syscall3(INT80_UFREE, (uint64_t)(uintptr_t)ptr, 0, 0);
 }
 
 

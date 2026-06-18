@@ -2,6 +2,7 @@
 #define USER_SYSCALL_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -100,6 +101,8 @@ enum {
     INT80_AUDIO_PLAY = 141,
     INT80_AUDIO_STOP = 142,
     INT80_AUDIO_STATUS = 143,
+    INT80_UMALLOC = 150,
+    INT80_UFREE = 151,
 };
 
 long ntux_syscall3(uint64_t nr, uint64_t a0, uint64_t a1, uint64_t a2);
@@ -317,6 +320,8 @@ long sys_getgrgid(char* out, uint32_t gid);
 long sys_getppid(void);
 long sys_setsid(void);
 long sys_getpgid(void);
+void *sys_umalloc(size_t size);
+void sys_ufree(void *ptr);
 
 #ifdef __cplusplus
 }

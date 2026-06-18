@@ -184,6 +184,8 @@ enum {
     INT80_AUDIO_PLAY = 141,
     INT80_AUDIO_STOP = 142,
     INT80_AUDIO_STATUS = 143,
+    INT80_UMALLOC = 150,
+    INT80_UFREE = 151,
 };
 
 typedef struct {

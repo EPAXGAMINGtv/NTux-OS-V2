@@ -23,6 +23,7 @@
 #include <lib/info.h>
 #include <mm/kmalloc.h>
 #include <mm/pmm.h>
+#include <mm/umalloc.h>
 #include <lib/string.h>
 #include <lib/kutils.h>
 #include <sys/user.h>
@@ -1601,6 +1602,18 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
         }
         case INT80_AUDIO_STATUS: {
             regs->rax = audio_is_playing() ? 1u : 0u;
+            return 0;
+        }
+        case INT80_UMALLOC: {
+            size_t sz = (size_t)regs->rdi;
+            void *p = umalloc(sz);
+            regs->rax = (uint64_t)(uintptr_t)p;
+            return 0;
+        }
+        case INT80_UFREE: {
+            void *ptr = (void *)(uintptr_t)regs->rdi;
+            ufree(ptr);
+            regs->rax = 0;
             return 0;
         }
         default:
