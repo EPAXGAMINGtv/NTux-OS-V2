@@ -23,7 +23,18 @@ static inline uint8_t *block_end(kmalloc_block_t *b) {
     return (uint8_t *)(b + 1) + b->size;
 }
 
+static void add_remaining_bump_to_free_list(void) {
+    size_t remaining = heap_end - heap_cur;
+    if (remaining >= sizeof(kmalloc_block_t) + 8u) {
+        kmalloc_block_t *block = (kmalloc_block_t *)heap_cur;
+        block->size = remaining - sizeof(kmalloc_block_t);
+        block->next = free_list;
+        free_list = block;
+    }
+}
+
 static int grow_heap(size_t min_bytes) {
+    add_remaining_bump_to_free_list();
     size_t pages_needed = (min_bytes + PAGE_SIZE - 1) / PAGE_SIZE;
     size_t pages = pages_needed > HEAP_CHUNK_PAGES ? pages_needed : HEAP_CHUNK_PAGES;
     void *chunk = vmm_alloc_pages(pages);

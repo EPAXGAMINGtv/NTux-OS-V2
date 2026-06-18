@@ -852,10 +852,9 @@ static int vgpu_init(void* context) {
         return -1;
     }
 
+    gpu_initialized = 1;
     memset(virtio_fb, 0, VIRTIO_FB_SIZE);
     virtio_gpu_flush(0, 0, (int)gpu_width, (int)gpu_height);
-
-    gpu_initialized = 1;
     kprint("[GPU-DBG] VirtIO GPU init OK\n");
     return 0;
 }

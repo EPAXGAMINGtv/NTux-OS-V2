@@ -1,3 +1,6 @@
 [submodule "userspace/ntuxpkg"]
 	path = userspace/ntuxpkg
 	url = https://github.com/EPAXGAMINGtv/NTux-OS-pkg-mgr-cli.git
+[submodule "NTux-OS-applycation-teamplate"]
+	path = NTux-OS-applycation-teamplate
+	url = https://github.com/EPAXGAMINGtv/NTux-OS-applycation-teamplate.git
