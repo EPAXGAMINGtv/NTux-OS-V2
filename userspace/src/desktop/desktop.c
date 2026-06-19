@@ -3670,7 +3670,7 @@ static void icon_free_preview(desk_icon_t* icon) {
     icon->preview_loading = 0;
 }
 
-static void icon_free_app_icon(desk_icon_t* icon) {
+void icon_free_app_icon(desk_icon_t* icon) {
     if (!icon || !icon->icon_pixels) return;
     free(icon->icon_pixels);
     icon->icon_pixels = 0;
@@ -3680,7 +3680,7 @@ static void icon_free_app_icon(desk_icon_t* icon) {
     icon->icon_failed = 0;
 }
 
-static int app_icon_path_for_exec(const char* exec_path, char* out, size_t cap) {
+int app_icon_path_for_exec(const char* exec_path, char* out, size_t cap) {
     if (!out || cap == 0) return -1;
     strncpy(out, "/boot/res/icons/app.bmp", cap - 1);
     out[cap - 1] = '\0';
@@ -3740,7 +3740,7 @@ static int app_icon_path_for_exec(const char* exec_path, char* out, size_t cap) 
     return 0;
 }
 
-static void icon_set_app_icon(desk_icon_t* icon, const char* path) {
+void icon_set_app_icon(desk_icon_t* icon, const char* path) {
     if (!icon) return;
     icon_free_app_icon(icon);
     icon->icon_failed = 0;

@@ -219,6 +219,11 @@ static int deskapi_add_icon(const window_msg_t* msg) {
     deskapi_copy_text(icon->label, sizeof(icon->label), msg->text[0] ? msg->text : "App");
     deskapi_copy_text(icon->exec_path, sizeof(icon->exec_path), msg->text2);
     deskapi_clamp_icon(icon);
+    {
+        char icon_path[160];
+        app_icon_path_for_exec(icon->exec_path, icon_path, sizeof(icon_path));
+        icon_set_app_icon(icon, icon_path);
+    }
     return 0;
 }
 

@@ -72,5 +72,8 @@ void start_menu_clear_query(void);
 void start_power_action(int action);
 int users_add_account(const char* name, const char* pass);
 void bg_gradient(void);
+void icon_set_app_icon(desk_icon_t* icon, const char* path);
+void icon_free_app_icon(desk_icon_t* icon);
+int app_icon_path_for_exec(const char* exec_path, char* out, size_t cap);
 
 #endif

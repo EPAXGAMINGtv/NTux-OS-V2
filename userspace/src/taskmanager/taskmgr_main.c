@@ -48,9 +48,15 @@ void ntux_user_entry(void) {
     int disp_gpu = 0;
     uint64_t disp_rd = 0;
     uint64_t disp_wr = 0;
+    /* Smoothing: exponential moving average, alpha = 64/256 = 0.25 */
+    int cpu_smooth = 0;
     enum { TASKMGR_MAX_TASKS = 64, TASKMGR_TICK_TRACK = 128 };
     uint64_t prev_task_ticks[TASKMGR_TICK_TRACK];
     memset(prev_task_ticks, 0, sizeof(prev_task_ticks));
+    uint8_t task_cpu_smooth[TASKMGR_MAX_TASKS];
+    memset(task_cpu_smooth, 0, sizeof(task_cpu_smooth));
+    uint64_t task_smooth_id[TASKMGR_MAX_TASKS];
+    memset(task_smooth_id, 0, sizeof(task_smooth_id));
 
     for (;;) {
         if (window_should_close(id)) break;
@@ -93,7 +99,7 @@ void ntux_user_entry(void) {
         }
 
         int disk_pct = 0;
-        taskmgr_push_hist(hist.cpu_hist, taskmgr_clamp_pct(cpu_pct));
+        taskmgr_push_hist(hist.cpu_hist, taskmgr_clamp_pct(disp_cpu));
         taskmgr_push_hist(hist.mem_hist, taskmgr_clamp_pct(mem_pct));
         
         /* GPU stats - use real data or 0 */
@@ -111,7 +117,8 @@ void ntux_user_entry(void) {
             taskmgr_push_hist(hist.disk_hist, taskmgr_clamp_pct(disk_pct));
         }
 
-        disp_cpu = cpu_pct;
+        cpu_smooth = (cpu_pct * 64 + cpu_smooth * 192) / 256;
+        disp_cpu = cpu_smooth;
         disp_mem = mem_pct;
         disp_gpu = gpu_pct;
         disp_rd = rd_bps;
@@ -158,7 +165,14 @@ void ntux_user_entry(void) {
                 if (pct > 100) pct = 100;
                 if (pct < 0) pct = 0;
             }
-            task_cpu[i] = (uint8_t)pct;
+            /* Smooth per-task CPU% — reset if task changed */
+            if (task_smooth_id[i] != tid) {
+                task_smooth_id[i] = tid;
+                task_cpu_smooth[i] = (uint8_t)pct;
+            } else {
+                task_cpu_smooth[i] = (uint8_t)((pct * 64u + task_cpu_smooth[i] * 192u) / 256u);
+            }
+            task_cpu[i] = task_cpu_smooth[i];
             prev_task_ticks[tid] = now;
         }
 
@@ -241,7 +255,7 @@ void ntux_user_entry(void) {
         gpu_last_ticks = gpu_now.ticks;
         last_left = st.mouse_left;
 
-        usleep(1000u * 33u);
+        usleep(1000u * 100u);
     }
 
     sys_exit(0);
