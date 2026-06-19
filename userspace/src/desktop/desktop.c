@@ -4543,7 +4543,7 @@ void img_job_enqueue_window_icon(uint64_t win_id, const char* path) {
     job->path[sizeof(job->path) - 1] = '\0';
     job->browser_id = 0;
     job->win_id = win_id;
-    job->desired_channels = 4;
+    job->desired_channels = 3;
     g_img_job_tail = (g_img_job_tail + 1) % IMG_JOB_MAX;
     g_img_job_count++;
 }
@@ -4955,7 +4955,7 @@ static void img_job_pump(void) {
                 desk_window_t* w = &g_windows[i];
                 if (w->id == job.win_id) {
                     image_t img;
-                    if (image_decode_file_scaled(job.path, 4, job.max_w, job.max_h, &img) == 0 &&
+                    if (image_decode_file_scaled(job.path, 3, job.max_w, job.max_h, &img) == 0 &&
                         img.data && img.width > 0 && img.height > 0) {
                         if (w->icon_data) free(w->icon_data);
                         w->icon_data = img.data;
