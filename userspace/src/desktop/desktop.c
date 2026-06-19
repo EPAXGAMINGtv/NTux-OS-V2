@@ -396,6 +396,7 @@ static int g_desktop_conf_ready = 0;
 static char g_wallpaper_pref[320] = "gradient";
 static int g_wallpaper_custom = 0;
 static int g_wallpaper_builtin_enabled = 0;
+static int g_dark_mode = 0;
 #if DESK_ENABLE_INSTALLER
 static ntux_dirent_t g_inst_dirents[DESK_INST_LS_MAX];
 static uint64_t g_inst_drive_ids[8];
@@ -425,7 +426,14 @@ static int g_user_count = 0;
 
 static const desk_theme_t g_themes[DESK_THEMES] = {
     {
-        "Mono",
+        "Light",
+        0xFFEFF5F9u, 0xFFD7E4ECu, 0xFFB9CDD9u, 0xFF246BFEu,
+        0xFF246BFEu, 0xFF9FB2C0u, 0xFFEAF1F6u, 0xFFD5E0E8u,
+        0xFFF8FBFEu, 0xFF17212Bu, 0xFF607284u,
+        0xEEF3F7FAu, 0xFFB8C9D6u, 0xEEF7FAFCu, 0x55246BFEu
+    },
+    {
+        "Dark",
         0xFF101012u, 0xFF16171Au, 0xFF0B0C0Fu, 0xFF7D7D7Du,
         0xFF7D7D7Du, 0xFF1E1F22u, 0xFF2E3035u, 0xFF1A1B1Eu,
         0xFF15161Au, 0xFFDADADAu, 0xFF9A9A9Au,
@@ -492,6 +500,7 @@ static int users_add_account(const char* name, const char* pass);
 static char poll_char(void);
 static int poll_special_press(int sc);
 static void desktop_mark_input(void);
+static void desktop_pump_crashed_windows(void);
 static int screensaver_is_running(void);
 static void screensaver_try_start(uint64_t now);
 static void desktop_logout(void);
@@ -526,6 +535,7 @@ static int str_ends_with_ci(const char* s, const char* ext);
 static int path_is_image_ext(const char* path);
 static int path_is_text_ext(const char* path);
 static int path_is_obj_ext(const char* path);
+static int path_is_font_ext(const char* path);
 static int text_contains_ci(const char* hay, const char* needle);
 static int start_menu_match_icon(int idx);
 static void start_menu_clear_query(void);
@@ -1076,17 +1086,9 @@ static void draw_window_image(const desk_window_t* w, int ox, int oy) {
 static void desktop_publish_input_state(void) {
     window_input_state_t st;
     memset(&st, 0, sizeof(st));
-    int hover_index = -1;
-    for (int i = g_window_count - 1; i >= 0; --i) {
-        const desk_window_t* w = &g_windows[i];
-        if (!w->visible || w->minimized) continue;
-        if (inside_window(w, g_last_mouse_x, g_last_mouse_y)) {
-            hover_index = i;
-            break;
-        }
-    }
-    if (hover_index >= 0) {
-        const desk_window_t* w = &g_windows[hover_index];
+    if (g_focus_index >= 0 && g_focus_index < g_window_count) {
+        const desk_window_t* w = &g_windows[g_focus_index];
+        if (w->visible && !w->minimized) {
         int base_w = w->canvas_base_w;
         int base_h = w->canvas_base_h;
         int client_w = w->w - 4;
@@ -1095,6 +1097,7 @@ static void desktop_publish_input_state(void) {
         if (client_h < 1) client_h = 1;
         if (base_w <= 0) base_w = client_w;
         if (base_h <= 0) base_h = client_h;
+        st.focused = 1;
         st.window_id = w->id;
         st.win_x = w->x;
         st.win_y = w->y;
@@ -1102,26 +1105,6 @@ static void desktop_publish_input_state(void) {
         st.win_h = w->h;
         st.base_w = base_w;
         st.base_h = base_h;
-        if (hover_index == g_focus_index) st.focused = 1;
-    } else if (g_focus_index >= 0 && g_focus_index < g_window_count) {
-        const desk_window_t* w = &g_windows[g_focus_index];
-        if (w->visible && !w->minimized) {
-            int base_w = w->canvas_base_w;
-            int base_h = w->canvas_base_h;
-            int client_w = w->w - 4;
-            int client_h = w->h - DESK_TITLEBAR_H - 3;
-            if (client_w < 1) client_w = 1;
-            if (client_h < 1) client_h = 1;
-            if (base_w <= 0) base_w = client_w;
-            if (base_h <= 0) base_h = client_h;
-            st.focused = 1;
-            st.window_id = w->id;
-            st.win_x = w->x;
-            st.win_y = w->y;
-            st.win_w = w->w;
-            st.win_h = w->h;
-            st.base_w = base_w;
-            st.base_h = base_h;
         }
     }
     st.mouse_x = g_last_mouse_x;
@@ -1479,21 +1462,72 @@ static int root_has_desktop_conf(const char* root) {
     return sys_fs_exists(conf_path) > 0 ? 1 : 0;
 }
 
+static int is_real_drive_name(const char* name) {
+    if (!name || !name[0]) return 0;
+    return str_starts_with(name, "fat") || str_starts_with(name, "ext") ||
+           str_starts_with(name, "disk") || str_starts_with(name, "flash") ||
+           str_starts_with(name, "drive") || str_starts_with(name, "nvme") ||
+           str_starts_with(name, "sd");
+}
+
+static int detect_persist_root(char* out, size_t out_cap) {
+    ntux_dirent_t ents[128];
+    uint64_t count = 0;
+    if (sys_fs_list_dir("/", ents, 128, &count) != 0) { out[0] = '\0'; return -1; }
+    if (count > 128) count = 128;
+    for (uint64_t i = 0; i < count; ++i) {
+        if (!ents[i].is_dir) continue;
+        if (strcmp(ents[i].name, ".") == 0 || strcmp(ents[i].name, "..") == 0) continue;
+        if (str_starts_with(ents[i].name, "iso") || str_starts_with(ents[i].name, "cd")) continue;
+        if (!is_real_drive_name(ents[i].name)) continue;
+        char boot_test[128];
+        snprintf(boot_test, sizeof(boot_test), "/%s/boot", ents[i].name);
+        if (sys_fs_exists(boot_test) > 0 ||
+            sys_fs_exists("/boot/limine.conf") == 0) {
+            snprintf(out, out_cap, "/%s", ents[i].name);
+            return 0;
+        }
+    }
+    if (sys_fs_exists("/boot/limine.conf") == 0) {
+        snprintf(out, out_cap, "/");
+        return 0;
+    }
+    out[0] = '\0';
+    return -1;
+}
+
 static void setup_desktop_storage(void) {
     g_desktop_conf_ready = 0;
-    strncpy(g_user_store_root, "/home", sizeof(g_user_store_root) - 1);
+    char persist[32] = "";
+    detect_persist_root(persist, sizeof(persist));
+
+    if (persist[0] && persist[0] == '/' && (persist[1] == '\0' || persist[1] != '\0')) {
+        snprintf(g_user_store_root, sizeof(g_user_store_root), "%s%s", persist, "/home");
+    } else {
+        strncpy(g_user_store_root, "/home", sizeof(g_user_store_root) - 1);
+    }
     g_user_store_root[sizeof(g_user_store_root) - 1] = '\0';
-    strncpy(g_desktop_store_root, "/", sizeof(g_desktop_store_root) - 1);
+    strncpy(g_desktop_store_root, persist[0] ? persist : "/", sizeof(g_desktop_store_root) - 1);
     g_desktop_store_root[sizeof(g_desktop_store_root) - 1] = '\0';
-    strncpy(g_desktop_dir, "/desktop", sizeof(g_desktop_dir) - 1);
+    if (persist[0]) {
+        snprintf(g_desktop_dir, sizeof(g_desktop_dir), "%s/desktop", persist);
+        snprintf(g_desktop_conf_dir, sizeof(g_desktop_conf_dir), "%s/etc", persist);
+        snprintf(g_desktop_conf_path, sizeof(g_desktop_conf_path), "%s/etc/desktop.conf", persist);
+    } else {
+        strncpy(g_desktop_dir, "/desktop", sizeof(g_desktop_dir) - 1);
+        strncpy(g_desktop_conf_dir, "/etc", sizeof(g_desktop_conf_dir) - 1);
+        strncpy(g_desktop_conf_path, "/etc/desktop.conf", sizeof(g_desktop_conf_path) - 1);
+    }
     g_desktop_dir[sizeof(g_desktop_dir) - 1] = '\0';
-    strncpy(g_desktop_conf_dir, "/etc", sizeof(g_desktop_conf_dir) - 1);
     g_desktop_conf_dir[sizeof(g_desktop_conf_dir) - 1] = '\0';
-    strncpy(g_desktop_conf_path, "/etc/desktop.conf", sizeof(g_desktop_conf_path) - 1);
     g_desktop_conf_path[sizeof(g_desktop_conf_path) - 1] = '\0';
+    if (persist[0] && persist[0] == '/') {
+        (void)sys_fs_mkdir(persist, "desktop");
+        (void)sys_fs_mkdir(persist, "etc");
+    }
     (void)sys_fs_mkdir("/", "desktop");
     (void)sys_fs_mkdir("/", "tmp");
-    (void)sys_fs_mkdir("/home", ".ntux");
+    (void)sys_fs_mkdir(g_user_store_root, ".ntux");
     g_desktop_conf_ready = 1;
 }
 
@@ -3066,11 +3100,26 @@ static int write_objview_path(const char* path) {
     return (sys_fs_create_file("/tmp", "objview_path", path, (uint64_t)len) == 0) ? 0 : -1;
 }
 
+static int write_fontview_path(const char* path) {
+    if (!path) return -1;
+    size_t len = strlen(path);
+    if (sys_fs_write_file("/tmp/fontview_path", path, (uint64_t)len) == 0) return 0;
+    return (sys_fs_create_file("/tmp", "fontview_path", path, (uint64_t)len) == 0) ? 0 : -1;
+}
+
 static long desktop_launch_image_viewer(const char* path) {
     if (!path || !path[0]) return -1;
     (void)write_imgview_path(path);
     long rc = sys_task_add_module("imgview");
-    if (rc != 0) rc = (desktop_launch_target("imgview.elf") == 0) ? 0 : -1;
+    if (rc < 0) rc = (desktop_launch_target("imgview.elf") == 0) ? 0 : -1;
+    return rc;
+}
+
+static long desktop_launch_font_viewer(const char* path) {
+    if (!path || !path[0]) return -1;
+    (void)write_fontview_path(path);
+    long rc = sys_task_add_module("fontview");
+    if (rc < 0) rc = (desktop_launch_target("fontview.elf") == 0) ? 0 : -1;
     return rc;
 }
 
@@ -3078,7 +3127,7 @@ static long desktop_launch_objview_with_path(const char* path) {
     if (!path || !path[0]) return -1;
     (void)write_objview_path(path);
     long rc = sys_task_add_module("objview");
-    if (rc != 0) rc = (desktop_launch_target("objview.elf") == 0) ? 0 : -1;
+    if (rc < 0) rc = (desktop_launch_target("objview.elf") == 0) ? 0 : -1;
     return rc;
 }
 
@@ -4676,6 +4725,45 @@ static void desktop_pump_close_requests(void) {
     if (closed_any) update_focus_after_visibility_change();
 }
 
+static int desktop_task_is_alive(int tid) {
+    ntux_task_info_t tasks[96];
+    uint64_t count = 0;
+    if (tid < 0) return 1;
+    if (sys_task_list(tasks, 96u, &count) != 0) return 1;
+    if (count > 96u) count = 96u;
+    for (uint64_t i = 0; i < count; ++i) {
+        if ((int)tasks[i].id != tid) continue;
+        return (tasks[i].state == NTUX_THREAD_TERMINATED || !tasks[i].active) ? 0 : 1;
+    }
+    return 0;
+}
+
+static void desktop_show_crash_message(const char* title) {
+    g_msgbox_active = 1;
+    g_msgbox_flags = WINDOW_MSGBOX_OK;
+    g_msgbox_owner_tid = -1;
+    strncpy(g_msgbox_title, "Process crashed", sizeof(g_msgbox_title) - 1);
+    g_msgbox_title[sizeof(g_msgbox_title) - 1] = '\0';
+    snprintf(g_msgbox_text, sizeof(g_msgbox_text), "%s stopped unexpectedly.", title && title[0] ? title : "An application");
+    notify_push("Process crashed", title && title[0] ? title : "An application stopped");
+    desktop_mark_dirty();
+}
+
+static void desktop_pump_crashed_windows(void) {
+    for (int i = 0; i < g_window_count; ++i) {
+        desk_window_t* w = &g_windows[i];
+        if (!w->visible || w->closing || w->owner_tid < 0) continue;
+        if (desktop_task_is_alive(w->owner_tid)) continue;
+        char title[DESK_MAX_TITLE];
+        strncpy(title, w->title, sizeof(title) - 1);
+        title[sizeof(title) - 1] = '\0';
+        desktop_window_cleanup(i, 0);
+        desktop_show_crash_message(title);
+        update_focus_after_visibility_change();
+        return;
+    }
+}
+
 /* Desktop API is handled in api.c via sys_deskapi_* messages. */
 
 static void draw_window(desk_window_t* w, int focused) {
@@ -5476,8 +5564,10 @@ static int desktop_conf_save_layout(void) {
     if (!g_desktop_conf_ready) return -1;
     out[0] = '\0';
     p = (size_t)snprintf(out, sizeof(out),
-                         "version=2\ninstalled=true\ndesktop_dir=%s\nwallpaper=%s\nbuiltin_bg=%s\n",
-                         g_desktop_dir, g_wallpaper_pref, g_wallpaper_builtin_enabled ? "true" : "false");
+                         "version=2\ninstalled=true\ndesktop_dir=%s\nwallpaper=%s\nbuiltin_bg=%s\ndark_mode=%s\n",
+                         g_desktop_dir, g_wallpaper_pref,
+                         g_wallpaper_builtin_enabled ? "true" : "false",
+                         g_dark_mode ? "true" : "false");
     if (p >= sizeof(out)) return -1;
     for (int i = 0; i < g_icon_count; ++i) {
         int n;
@@ -5565,6 +5655,11 @@ static int desktop_conf_load_layout(void) {
         }
         if (strncmp(line, "builtin_bg=", 11) == 0) {
             g_wallpaper_builtin_enabled = parse_conf_bool_true(line + 11) ? 1 : 0;
+            continue;
+        }
+        if (strncmp(line, "dark_mode=", 10) == 0) {
+            g_dark_mode = parse_conf_bool_true(line + 10) ? 1 : 0;
+            g_theme_index = g_dark_mode ? 1 : 0;
             continue;
         }
         (void)desktop_conf_apply_icon_line(line);
@@ -5829,20 +5924,19 @@ static int imgdecode_launch(imgdecode_pending_t* p) {
     snprintf(p->return_file, sizeof(p->return_file), "/tmp/imgdecode_res.%d", g_imgdecode_next_id++);
     if (g_imgdecode_next_id > 999999) g_imgdecode_next_id = 0;
 
+    long tid = sys_task_add("/boot/modules/imgdecode.elf");
+    if (tid < 0) { p->active = 0; return -1; }
+
+    char req_path[64];
+    snprintf(req_path, sizeof(req_path), "/tmp/imgdecode_req.%ld", tid);
+
     char req[512];
     int n = snprintf(req, sizeof(req), "0\n%s\n3\n%d\n%d\n%s\n",
         p->path, p->max_w, p->max_h, p->return_file);
     if (n <= 0 || (size_t)n >= sizeof(req)) { p->active = 0; return -1; }
 
-    if (sys_fs_write_file("/tmp/imgdecode_req", req, (uint64_t)n) != 0 &&
-        sys_fs_create_file("/tmp", "imgdecode_req", req, (uint64_t)n) != 0) {
-        p->active = 0;
-        return -1;
-    }
-
-    long tid = sys_task_add("/boot/modules/imgdecode.elf");
-    if (tid < 0) {
-        (void)sys_fs_remove("/tmp/imgdecode_req");
+    if (sys_fs_write_file(req_path, req, (uint64_t)n) != 0 &&
+        sys_fs_create_file("/tmp", req_path + 5, req, (uint64_t)n) != 0) {
         p->active = 0;
         return -1;
     }
@@ -6104,9 +6198,18 @@ static void img_job_pump(void) {
                 }
             }
         } else if (job.type == IMG_JOB_WINDOW_IMAGE) {
-            desk_window_t* w = window_find_by_id(job.win_id);
-            if (w) {
-                desk_window_set_image(w, job.path, job.desired_channels);
+            char req[512];
+            int desired = (job.desired_channels == 3 || job.desired_channels == 4) ? job.desired_channels : 4;
+            int n = snprintf(req, sizeof(req), "%llx\n%s\n%d\n0\n0\n",
+                (unsigned long long)job.win_id, job.path, desired);
+            if (n > 0 && (size_t)n < sizeof(req)) {
+                long tid = sys_task_add("/boot/modules/imgdecode.elf");
+                if (tid >= 0) {
+                    char req_path[64];
+                    snprintf(req_path, sizeof(req_path), "/tmp/imgdecode_req.%ld", tid);
+                    (void)(sys_fs_write_file(req_path, req, (uint64_t)n) == 0 ||
+                           sys_fs_create_file("/tmp", req_path + 5, req, (uint64_t)n) == 0);
+                }
             }
         }
 
@@ -6719,6 +6822,10 @@ static void browser_enter_entry(desk_browser_state_t* st, int idx) {
     }
     if (path_is_obj_ext(st->ents[idx].name)) {
         (void)desktop_launch_objview_with_path(full);
+        return;
+    }
+    if (path_is_font_ext(st->ents[idx].name)) {
+        (void)desktop_launch_font_viewer(full);
         return;
     }
     if (name_is_elf(st->ents[idx].name)) {
@@ -7836,6 +7943,11 @@ static int path_is_image_ext(const char* path) {
            str_ends_with_ci(path, ".bmp");
 }
 
+static int path_is_font_ext(const char* path) {
+    if (!path || !path[0]) return 0;
+    return str_ends_with_ci(path, ".ttf") || str_ends_with_ci(path, ".tff");
+}
+
 static int browser_is_dir_path(const char* path) {
     uint64_t n = 0;
     return sys_fs_list_dir(path, 0, 0, &n) == 0;
@@ -8564,6 +8676,8 @@ static void handle_mouse(void) {
                         (void)desktop_launch_image_viewer(g_icons[icon_idx].exec_path);
                     } else if (path_is_obj_ext(g_icons[icon_idx].exec_path)) {
                         (void)desktop_launch_objview_with_path(g_icons[icon_idx].exec_path);
+                    } else if (path_is_font_ext(g_icons[icon_idx].exec_path)) {
+                        (void)desktop_launch_font_viewer(g_icons[icon_idx].exec_path);
                     } else if (g_icons[icon_idx].exec_path[0]) {
                         (void)desktop_launch_target(g_icons[icon_idx].exec_path);
                     }
@@ -9721,6 +9835,17 @@ static void draw_icons(void) {
     const desk_theme_t* th = desk_theme();
     uint64_t tk = sys_get_ticks();
     int loaded_this_frame = 0;
+
+    static uint64_t s_retry_tick = 0;
+    if (tk - s_retry_tick >= 300) {
+        s_retry_tick = tk;
+        for (int r = 0; r < g_icon_count; ++r) {
+            if (g_icons[r].is_image && g_icons[r].preview_failed && !g_icons[r].preview_ready) {
+                g_icons[r].preview_failed = 0;
+            }
+        }
+    }
+
     for (int i = 0; i < g_icon_count; ++i) {
         if (!g_icons[i].visible) continue;
         if (g_desktop_dir[0]) {
@@ -9737,7 +9862,7 @@ static void draw_icons(void) {
         int pulse = (int)((tk + (uint64_t)i * 13u) % 30u);
         int oy = (g_anim_level >= 2 && pulse < 6) ? (3 - pulse / 2) : 0;
 
-        if (g_icons[i].is_image && !g_icons[i].preview_ready && !g_icons[i].preview_failed &&
+        if (g_icons[i].is_image && !g_icons[i].preview_ready &&
             !g_icons[i].preview_loading && loaded_this_frame < 6) {
             (void)icon_request_preview(i);
             loaded_this_frame++;
@@ -10044,6 +10169,14 @@ void desktop_reload_config(void) {
             }
         }
     }
+
+    if (sys_fs_read_file("/conf/appearance.conf", buf, sizeof(buf) - 1, &len) == 0 && len > 0) {
+        buf[len] = '\0';
+        trim_newline(buf);
+        g_dark_mode = parse_conf_bool_true(buf) ? 1 : 0;
+        g_theme_index = g_dark_mode ? 1 : 0;
+        g_desktop_dirty = 1;
+    }
 }
 
 void desktop_get_local_time(ntux_time_t* t) {
@@ -10206,6 +10339,7 @@ void desktop_run(void) {
         int msg_count = window_ipc_process();
         if (msg_count > 0) g_desktop_dirty = 1;
         desktop_pump_close_requests();
+        desktop_pump_crashed_windows();
         if (!g_desktop_dirty) {
             for (int i = 0; i < g_window_count; ++i) {
                 if (g_windows[i].canvas_dirty || g_windows[i].draw_count > 0) {

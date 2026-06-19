@@ -11,6 +11,14 @@
 #define CELL_SIZE 36
 #define GLYPH_PX 16
 
+static int write_font_conf(const char* path) {
+    if (!path || !path[0]) return -1;
+    if (sys_fs_exists("/conf") <= 0) (void)sys_fs_mkdir("/", "conf");
+    uint64_t len = (uint64_t)strlen(path);
+    if (sys_fs_write_file("/conf/font.conf", path, len) == 0) return 0;
+    return (sys_fs_create_file("/conf", "font.conf", path, len) == 0) ? 0 : -1;
+}
+
 void ntux_user_entry(void) {
     char font_path[256] = "/boot/res/fonts/Hack-Regular.ttf";
     if (ntux_argc() > 1) {
@@ -67,6 +75,8 @@ void ntux_user_entry(void) {
     int max_scroll = 127 - total;
     if (max_scroll < 0) max_scroll = 0;
     int last_scroll_val = 0;
+    int last_left = 0;
+    char status[64] = "";
 
     for (;;) {
         if (window_should_close(id)) break;
@@ -75,12 +85,20 @@ void ntux_user_entry(void) {
         window_get_input_state(id, &st);
         if (st.close_requested) break;
 
-        if (st.mouse_scroll != last_scroll_val) {
+        if (!st.focused) {
+            last_left = 0;
+        } else if (st.mouse_scroll != last_scroll_val) {
             scroll -= (st.mouse_scroll - last_scroll_val);
             if (scroll < 0) scroll = 0;
             if (scroll > max_scroll) scroll = max_scroll;
             last_scroll_val = st.mouse_scroll;
         }
+        if (st.focused && st.mouse_left && !last_left &&
+            st.mouse_x >= 20 && st.mouse_x < 210 && st.mouse_y >= 18 && st.mouse_y < 44) {
+            if (write_font_conf(font_path) == 0) snprintf(status, sizeof(status), "Desktop font updated");
+            else snprintf(status, sizeof(status), "Could not save font");
+        }
+        last_left = st.focused ? st.mouse_left : 0;
 
         for (int y = 0; y < buf_h; ++y)
             for (int x = 0; x < buf_w; ++x)
@@ -117,6 +135,9 @@ void ntux_user_entry(void) {
         (void)info;
 
         window_set_image_raw(id, buf_w, buf_h, 4, buf, (uint32_t)((size_t)buf_w * buf_h * 4));
+        window_draw_button(id, 20, 18, 190, 26, "Set as desktop font", WINDOW_BUTTON_PRIMARY);
+        window_draw_text(id, 224, 25, 0xFFD4E6FFu, font_path);
+        if (status[0]) window_draw_text(id, 20, FV_H - 24, 0xFF9BE7B1u, status);
         window_present(id);
         sys_wait_ticks(1);
     }

@@ -12,7 +12,7 @@ static const char* g_kbd_layouts[] = {
 };
 
 static const char* g_fonts[] = {
-    "iso0/boot/res/fonts/Hack-Regular.ttf",
+    "/boot/res/fonts/Hack-Regular.ttf",
     "/boot/res/fonts/JetBrainsMono.ttf",
     "/boot/res/fonts/FiraCode.ttf",
     "/boot/res/fonts/DejaVuSans.ttf",

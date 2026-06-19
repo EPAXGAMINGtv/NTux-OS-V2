@@ -12,8 +12,12 @@ void ntux_user_entry(void) {
 
     char buf[512];
     uint64_t len = 0;
-    if (sys_fs_read_file(req_path, 0, 0, &len) != 0 || len == 0 || len >= sizeof(buf))
-        sys_exit(1);
+    for (int retry = 0; retry < 100; retry++) {
+        if (sys_fs_read_file(req_path, 0, 0, &len) == 0 && len > 0 && len < sizeof(buf))
+            break;
+        sys_wait_ticks(1);
+    }
+    if (len == 0 || len >= sizeof(buf)) sys_exit(1);
     if (sys_fs_read_file(req_path, buf, len, &len) != 0) sys_exit(1);
     buf[len] = '\0';
     (void)sys_fs_remove(req_path);

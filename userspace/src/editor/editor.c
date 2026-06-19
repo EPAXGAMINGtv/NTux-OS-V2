@@ -4,10 +4,11 @@
 #include <stdlib.h>
 #include <syscall.h>
 #include <window.h>
-#include <window_protocol.h>
 #include <args.h>
 
-#define EDIT_MAX_LINES 256
+#define EDIT_W 820
+#define EDIT_H 520
+#define EDIT_MAX_LINES 512
 #define EDIT_LINE_LEN 256
 
 static char g_lines[EDIT_MAX_LINES][EDIT_LINE_LEN];
@@ -15,67 +16,152 @@ static int g_line_count = 1;
 static int g_cur_line = 0;
 static int g_cur_col = 0;
 static int g_scroll = 0;
-static char g_current_path[256] = "";
-static int g_dialog_pending = 0; /* 1=open, 2=save */
-static char g_status[64] = "";
-
+static char g_path[256] = "";
+static char g_status[80] = "Ready";
 static uint8_t g_key_last[128];
-static uint64_t g_last_key_tick = 0;
+static uint64_t g_last_text_tick = 0;
 
-static int key_edge(int sc) {
+static int key_edge(int focused, int sc) {
+    if (sc < 0 || sc >= (int)sizeof(g_key_last)) return 0;
+    if (!focused) {
+        g_key_last[sc] = 0;
+        return 0;
+    }
     int now = (sys_kbd_is_pressed((uint8_t)sc) > 0) ? 1 : 0;
-    int pressed = (now && !g_key_last[sc]) ? 1 : 0;
+    int edge = now && !g_key_last[sc];
     g_key_last[sc] = (uint8_t)now;
-    return pressed;
+    return edge;
 }
 
-static void ensure_line_bounds(void) {
+static void set_status(const char* s) {
+    if (!s) return;
+    strncpy(g_status, s, sizeof(g_status) - 1);
+    g_status[sizeof(g_status) - 1] = '\0';
+}
+
+static void reset_doc(void) {
+    for (int i = 0; i < EDIT_MAX_LINES; ++i) g_lines[i][0] = '\0';
+    g_line_count = 1;
+    g_cur_line = 0;
+    g_cur_col = 0;
+    g_scroll = 0;
+}
+
+static void clamp_cursor(void) {
+    if (g_line_count < 1) g_line_count = 1;
     if (g_cur_line < 0) g_cur_line = 0;
     if (g_cur_line >= g_line_count) g_cur_line = g_line_count - 1;
-    if (g_cur_col < 0) g_cur_col = 0;
     int len = (int)strlen(g_lines[g_cur_line]);
+    if (g_cur_col < 0) g_cur_col = 0;
     if (g_cur_col > len) g_cur_col = len;
+}
+
+static int split_parent_name(const char* full, char* parent, char* name, size_t cap) {
+    if (!full || full[0] != '/' || !parent || !name || cap < 4) return -1;
+    const char* slash = 0;
+    for (const char* p = full; *p; ++p) if (*p == '/') slash = p;
+    if (!slash || !slash[1]) return -1;
+    size_t plen = (size_t)(slash - full);
+    if (plen == 0) {
+        parent[0] = '/';
+        parent[1] = '\0';
+    } else {
+        if (plen >= cap) return -1;
+        memcpy(parent, full, plen);
+        parent[plen] = '\0';
+    }
+    strncpy(name, slash + 1, cap - 1);
+    name[cap - 1] = '\0';
+    return 0;
+}
+
+static int load_file(const char* path) {
+    if (!path || !path[0]) return -1;
+    uint64_t len = 0;
+    if (sys_fs_read_file(path, 0, 0, &len) != 0) {
+        set_status("Open failed");
+        return -1;
+    }
+    if (len > 128u * 1024u) len = 128u * 1024u;
+    char* buf = (char*)malloc((size_t)len + 1u);
+    if (!buf) {
+        set_status("Out of memory");
+        return -1;
+    }
+    if (sys_fs_read_file(path, buf, len, &len) != 0) {
+        free(buf);
+        set_status("Open failed");
+        return -1;
+    }
+    buf[len] = '\0';
+    reset_doc();
+    int line = 0;
+    size_t pos = 0;
+    while (pos < len && line < EDIT_MAX_LINES) {
+        size_t start = pos;
+        while (pos < len && buf[pos] != '\n' && buf[pos] != '\r') pos++;
+        size_t n = pos - start;
+        if (n >= EDIT_LINE_LEN) n = EDIT_LINE_LEN - 1;
+        memcpy(g_lines[line], buf + start, n);
+        g_lines[line][n] = '\0';
+        line++;
+        if (pos < len && buf[pos] == '\r') pos++;
+        if (pos < len && buf[pos] == '\n') pos++;
+    }
+    if (line < 1) line = 1;
+    g_line_count = line;
+    strncpy(g_path, path, sizeof(g_path) - 1);
+    g_path[sizeof(g_path) - 1] = '\0';
+    free(buf);
+    set_status("Opened");
+    clamp_cursor();
+    return 0;
+}
+
+static int save_file(const char* path) {
+    if (!path || !path[0]) {
+        set_status("No path");
+        return -1;
+    }
+    size_t cap = 160u * 1024u;
+    char* buf = (char*)malloc(cap);
+    if (!buf) {
+        set_status("Out of memory");
+        return -1;
+    }
+    size_t used = 0;
+    for (int i = 0; i < g_line_count; ++i) {
+        size_t n = strlen(g_lines[i]);
+        if (used + n + 2 >= cap) break;
+        memcpy(buf + used, g_lines[i], n);
+        used += n;
+        if (i + 1 < g_line_count) buf[used++] = '\n';
+    }
+    long rc = sys_fs_write_file(path, buf, (uint64_t)used);
+    if (rc != 0) {
+        char parent[256], name[256];
+        if (split_parent_name(path, parent, name, sizeof(parent)) == 0) {
+            rc = sys_fs_create_file(parent, name, buf, (uint64_t)used);
+        }
+    }
+    free(buf);
+    if (rc == 0) {
+        strncpy(g_path, path, sizeof(g_path) - 1);
+        g_path[sizeof(g_path) - 1] = '\0';
+        set_status("Saved");
+        return 0;
+    }
+    set_status("Save failed");
+    return -1;
 }
 
 static void insert_char(char c) {
-    if (g_cur_line < 0 || g_cur_line >= EDIT_MAX_LINES) return;
     char* line = g_lines[g_cur_line];
     int len = (int)strlen(line);
     if (len + 1 >= EDIT_LINE_LEN) return;
-    if (g_cur_col < 0) g_cur_col = 0;
     if (g_cur_col > len) g_cur_col = len;
-    for (int i = len; i >= g_cur_col; --i) {
-        line[i + 1] = line[i];
-    }
-    line[g_cur_col] = c;
-    g_cur_col++;
-}
-
-static void backspace_char(void) {
-    if (g_cur_line < 0 || g_cur_line >= g_line_count) return;
-    if (g_cur_col > 0) {
-        char* line = g_lines[g_cur_line];
-        int len = (int)strlen(line);
-        for (int i = g_cur_col - 1; i < len; ++i) {
-            line[i] = line[i + 1];
-        }
-        g_cur_col--;
-        return;
-    }
-    if (g_cur_line > 0) {
-        int prev = g_cur_line - 1;
-        int prev_len = (int)strlen(g_lines[prev]);
-        int cur_len = (int)strlen(g_lines[g_cur_line]);
-        if (prev_len + cur_len < EDIT_LINE_LEN) {
-            strncat(g_lines[prev], g_lines[g_cur_line], EDIT_LINE_LEN - prev_len - 1);
-            for (int i = g_cur_line; i < g_line_count - 1; ++i) {
-                memcpy(g_lines[i], g_lines[i + 1], EDIT_LINE_LEN);
-            }
-            g_line_count--;
-            g_cur_line = prev;
-            g_cur_col = prev_len;
-        }
-    }
+    memmove(line + g_cur_col + 1, line + g_cur_col, (size_t)(len - g_cur_col + 1));
+    line[g_cur_col++] = c;
 }
 
 static void newline_char(void) {
@@ -83,19 +169,37 @@ static void newline_char(void) {
     char* line = g_lines[g_cur_line];
     int len = (int)strlen(line);
     if (g_cur_col > len) g_cur_col = len;
-
     for (int i = g_line_count; i > g_cur_line + 1; --i) {
         memcpy(g_lines[i], g_lines[i - 1], EDIT_LINE_LEN);
     }
-    g_lines[g_cur_line + 1][0] = '\0';
-    if (g_cur_col < len) {
-        strncpy(g_lines[g_cur_line + 1], line + g_cur_col, EDIT_LINE_LEN - 1);
-        g_lines[g_cur_line + 1][EDIT_LINE_LEN - 1] = '\0';
-        line[g_cur_col] = '\0';
-    }
+    strncpy(g_lines[g_cur_line + 1], line + g_cur_col, EDIT_LINE_LEN - 1);
+    g_lines[g_cur_line + 1][EDIT_LINE_LEN - 1] = '\0';
+    line[g_cur_col] = '\0';
     g_line_count++;
     g_cur_line++;
     g_cur_col = 0;
+}
+
+static void backspace_char(void) {
+    if (g_cur_col > 0) {
+        char* line = g_lines[g_cur_line];
+        int len = (int)strlen(line);
+        memmove(line + g_cur_col - 1, line + g_cur_col, (size_t)(len - g_cur_col + 1));
+        g_cur_col--;
+        return;
+    }
+    if (g_cur_line <= 0) return;
+    int prev = g_cur_line - 1;
+    int prev_len = (int)strlen(g_lines[prev]);
+    int cur_len = (int)strlen(g_lines[g_cur_line]);
+    if (prev_len + cur_len >= EDIT_LINE_LEN) return;
+    strcat(g_lines[prev], g_lines[g_cur_line]);
+    for (int i = g_cur_line; i + 1 < g_line_count; ++i) {
+        memcpy(g_lines[i], g_lines[i + 1], EDIT_LINE_LEN);
+    }
+    g_line_count--;
+    g_cur_line = prev;
+    g_cur_col = prev_len;
 }
 
 static void move_left(void) {
@@ -115,232 +219,119 @@ static void move_right(void) {
     }
 }
 
-static void move_up(void) {
-    if (g_cur_line > 0) g_cur_line--;
-    ensure_line_bounds();
-}
-
-static void move_down(void) {
-    if (g_cur_line + 1 < g_line_count) g_cur_line++;
-    ensure_line_bounds();
-}
-
-static int split_parent_name(const char* full, char* parent, char* name, size_t cap) {
-    if (!full || full[0] != '/' || !parent || !name || cap < 4) return -1;
-    const char* slash = NULL;
-    for (const char* p = full; *p; ++p) {
-        if (*p == '/') slash = p;
-    }
-    if (!slash || !slash[1]) return -1;
-    size_t plen = (size_t)(slash - full);
-    size_t nlen = strlen(slash + 1);
-    if (plen + 1 > cap || nlen + 1 > cap) return -1;
-    if (plen == 0) {
-        parent[0] = '/'; parent[1] = '\0';
-    } else {
-        memcpy(parent, full, plen);
-        parent[plen] = '\0';
-    }
-    memcpy(name, slash + 1, nlen + 1);
-    return 0;
-}
-
-static int load_file(const char* path) {
-    if (!path || !path[0]) return -1;
-    uint64_t len = 0;
-    if (sys_fs_read_file(path, 0, 0, &len) != 0) return -1;
-    if (len > 65535u) len = 65535u;
-    char* buf = (char*)malloc((size_t)len + 1);
-    if (!buf) return -1;
-    if (sys_fs_read_file(path, buf, len, &len) != 0) {
-        free(buf);
-        return -1;
-    }
-    buf[len] = '\0';
-
-    for (int i = 0; i < EDIT_MAX_LINES; ++i) g_lines[i][0] = '\0';
-    g_line_count = 1;
-    const char* arg_path = ntux_arg(0);
-    if (arg_path && arg_path[0]) {
-        (void)load_file(arg_path);
-    }
-    g_cur_line = 0;
-    g_cur_col = 0;
-
-    int line = 0;
-    size_t pos = 0;
-    while (pos < len && line < EDIT_MAX_LINES) {
-        size_t start = pos;
-        while (pos < len && buf[pos] != '\n' && buf[pos] != '\r') pos++;
-        size_t l = pos - start;
-        if (l >= EDIT_LINE_LEN) l = EDIT_LINE_LEN - 1;
-        memcpy(g_lines[line], buf + start, l);
-        g_lines[line][l] = '\0';
-        line++;
-        if (pos < len && buf[pos] == '\r') pos++;
-        if (pos < len && buf[pos] == '\n') pos++;
-    }
-    if (line == 0) line = 1;
-    g_line_count = line;
-    free(buf);
-    strncpy(g_current_path, path, sizeof(g_current_path) - 1);
-    g_current_path[sizeof(g_current_path) - 1] = '\0';
-    strncpy(g_status, "Opened", sizeof(g_status) - 1);
-    g_status[sizeof(g_status) - 1] = '\0';
-    return 0;
-}
-
-static int save_file(const char* path) {
-    if (!path || !path[0]) return -1;
-    size_t cap = 65535u;
-    char* buf = (char*)malloc(cap);
-    if (!buf) return -1;
-    size_t used = 0;
-    for (int i = 0; i < g_line_count; ++i) {
-        size_t l = strlen(g_lines[i]);
-        if (used + l + 1 >= cap) break;
-        memcpy(buf + used, g_lines[i], l);
-        used += l;
-        if (i + 1 < g_line_count) buf[used++] = '\n';
-    }
-    if (used == 0 || buf[used - 1] != '\n') {
-        if (used + 1 < cap) buf[used++] = '\n';
-    }
-    long rc = sys_fs_write_file(path, buf, (uint64_t)used);
-    if (rc != 0) {
-        char parent[256];
-        char name[256];
-        if (split_parent_name(path, parent, name, sizeof(parent)) == 0) {
-            (void)sys_fs_create_file(parent, name, buf, (uint64_t)used);
-        }
-    }
-    free(buf);
-    strncpy(g_current_path, path, sizeof(g_current_path) - 1);
-    g_current_path[sizeof(g_current_path) - 1] = '\0';
-    strncpy(g_status, (rc == 0) ? "Saved" : "Save failed", sizeof(g_status) - 1);
-    g_status[sizeof(g_status) - 1] = '\0';
-    return 0;
-}
-
-static void draw_editor(window_t id, int w, int h) {
-    const uint32_t bg = 0xFF0C121Bu;
-    const uint32_t text = 0xFFE6F0FFu;
-    const uint32_t dim = 0xFF8EA6C8u;
-    const uint32_t accent = 0xFF56E6AAu;
-    int line_h = 10;
-    int top = 8;
-    int bottom = 26;
-    int rows = (h - top - bottom) / line_h;
+static void draw_editor(window_t id) {
+    int line_h = 12;
+    int top = 48;
+    int rows = (EDIT_H - top - 34) / line_h;
     if (rows < 1) rows = 1;
-
-    window_clear(id, bg);
-
-    char header[256];
-    snprintf(header, sizeof(header), "NTux Editor  |  Ctrl+O Open  Ctrl+S Save  Esc Exit  |  %s",
-             g_current_path[0] ? g_current_path : "(untitled)");
-    if (g_status[0]) {
-        size_t len = strlen(header);
-        if (len + 3 < sizeof(header)) {
-            strncat(header, " | ", sizeof(header) - len - 1);
-            strncat(header, g_status, sizeof(header) - strlen(header) - 1);
-        }
-    }
-    window_draw_text(id, 8, 6, dim, header);
-
     if (g_cur_line < g_scroll) g_scroll = g_cur_line;
     if (g_cur_line >= g_scroll + rows) g_scroll = g_cur_line - rows + 1;
+    if (g_scroll < 0) g_scroll = 0;
+
+    window_clear(id, 0xFFF7FAFCu);
+    window_draw_rect(id, 0, 0, EDIT_W, 38, 0xFFE7EEF5u, 1);
+    window_draw_text(id, 14, 12, 0xFF152536u, "Editor");
+    window_draw_button(id, 92, 8, 68, 24, "Open", WINDOW_BUTTON_SECONDARY);
+    window_draw_button(id, 168, 8, 68, 24, "Save", WINDOW_BUTTON_PRIMARY);
+    window_draw_text(id, 252, 14, 0xFF5B6C7Du, g_path[0] ? g_path : "(untitled)");
 
     for (int i = 0; i < rows; ++i) {
         int idx = g_scroll + i;
         if (idx >= g_line_count) break;
-        window_draw_text(id, 8, top + i * line_h, text, g_lines[idx]);
+        int y = top + i * line_h;
+        char ln[16];
+        snprintf(ln, sizeof(ln), "%4d", idx + 1);
+        window_draw_text(id, 10, y, 0xFF8A9BADu, ln);
+        window_draw_text(id, 52, y, 0xFF17212Bu, g_lines[idx]);
         if (idx == g_cur_line) {
-            int cx = 8 + g_cur_col * 8;
-            int cy = top + i * line_h + 9;
-            window_draw_line(id, cx, cy, cx + 6, cy, accent);
+            int cx = 52 + g_cur_col * 8;
+            window_draw_line(id, cx, y + 10, cx + 7, y + 10, 0xFF246BFEu);
         }
     }
 
-    char status[128];
-    snprintf(status, sizeof(status), "Ln %d, Col %d  |  Lines %d",
-             g_cur_line + 1, g_cur_col + 1, g_line_count);
-    window_draw_text(id, 8, h - 16, dim, status);
-
+    char footer[128];
+    snprintf(footer, sizeof(footer), "Ln %d Col %d | %s", g_cur_line + 1, g_cur_col + 1, g_status);
+    window_draw_rect(id, 0, EDIT_H - 26, EDIT_W, 26, 0xFFE7EEF5u, 1);
+    window_draw_text(id, 14, EDIT_H - 18, 0xFF4D6174u, footer);
     window_present(id);
 }
 
 void ntux_user_entry(void) {
-    window_t id = 0x454449544F5200ull; /* "EDITOR" */
-    int w = 720, h = 440;
-    if (window_init() != 0 || window_create(id, 120, 90, w, h, 0xFF0C121Bu, "Editor") != 0) {
-        puts("[editor] window_create failed");
+    window_t id = 0x454449544F5200ull;
+    if (window_init() != 0 || window_create(id, 110, 80, EDIT_W, EDIT_H, 0xFFF7FAFCu, "Editor") != 0) {
         sys_exit(1);
     }
     (void)window_set_icon(id, "/boot/res/icons/editor.bmp");
+    reset_doc();
+    const char* arg = ntux_arg(0);
+    if (arg && arg[0]) (void)load_file(arg);
 
-    for (int i = 0; i < EDIT_MAX_LINES; ++i) g_lines[i][0] = '\0';
-    g_line_count = 1;
-
+    int last_left = 0;
+    int dialog_open = 0;
     for (;;) {
         if (window_should_close(id)) break;
-        if (key_edge(0x01)) break; /* Esc */
+        window_input_state_t in;
+        memset(&in, 0, sizeof(in));
+        (void)window_get_input_state(id, &in);
+        if (in.close_requested) break;
 
-        int ctrl = (sys_kbd_is_pressed(0x1D) > 0) ? 1 : 0;
-        if (ctrl && key_edge(0x18)) { /* O */
-            g_dialog_pending = 1;
+        int focused = in.focused ? 1 : 0;
+        if (focused && in.mouse_left && !last_left) {
+            if (in.mouse_y >= 8 && in.mouse_y < 32 && in.mouse_x >= 92 && in.mouse_x < 160) {
+                dialog_open = 1;
+                window_open_file_picker("Open File", "/", 0);
+            } else if (in.mouse_y >= 8 && in.mouse_y < 32 && in.mouse_x >= 168 && in.mouse_x < 236) {
+                if (g_path[0]) (void)save_file(g_path);
+                else set_status("Open a file first");
+            }
+        }
+        last_left = focused ? in.mouse_left : 0;
+
+        if (key_edge(focused, 0x01)) break;
+        int ctrl = focused && (sys_kbd_is_pressed(0x1D) > 0);
+        if (ctrl && key_edge(focused, 0x18)) {
+            dialog_open = 1;
             window_open_file_picker("Open File", "/", 0);
-        } else if (ctrl && key_edge(0x1F)) { /* S */
-            if (g_current_path[0]) {
-                save_file(g_current_path);
-            } else {
-                strncpy(g_status, "No file opened", sizeof(g_status) - 1);
-                g_status[sizeof(g_status) - 1] = '\0';
+        }
+        if (ctrl && key_edge(focused, 0x1F)) {
+            if (g_path[0]) (void)save_file(g_path);
+            else set_status("Open a file first");
+        }
+        if (key_edge(focused, 0x48) && g_cur_line > 0) g_cur_line--;
+        if (key_edge(focused, 0x50) && g_cur_line + 1 < g_line_count) g_cur_line++;
+        if (key_edge(focused, 0x4B)) move_left();
+        if (key_edge(focused, 0x4D)) move_right();
+        clamp_cursor();
+
+        if (focused) {
+            uint64_t now = sys_get_ticks();
+            long ch = sys_getchar();
+            if (now - g_last_text_tick >= 2u) {
+                if (ch >= 32 && ch < 127 && !ctrl) {
+                    insert_char((char)ch);
+                    g_last_text_tick = now;
+                } else if (ch == '\n' || ch == '\r') {
+                    newline_char();
+                    g_last_text_tick = now;
+                } else if (ch == '\b' || ch == 127) {
+                    backspace_char();
+                    g_last_text_tick = now;
+                }
             }
         }
 
-        if (key_edge(0x48)) move_up();
-        if (key_edge(0x50)) move_down();
-        if (key_edge(0x4B)) move_left();
-        if (key_edge(0x4D)) move_right();
-
-        uint64_t now = sys_get_ticks();
-        long ch = sys_getchar();
-        if (ch >= 32 && ch < 127) {
-            if (now - g_last_key_tick >= 2u) {
-                insert_char((char)ch);
-                g_last_key_tick = now;
-            }
-        } else if (ch == '\n' || ch == '\r') {
-            if (now - g_last_key_tick >= 2u) {
-                newline_char();
-                g_last_key_tick = now;
-            }
-        } else if (ch == '\b' || ch == 127) {
-            if (now - g_last_key_tick >= 2u) {
-                backspace_char();
-                g_last_key_tick = now;
-            }
-        }
-
-        if (g_dialog_pending) {
+        if (dialog_open) {
             char path[256];
             uint32_t code = 0;
-            long rc = window_dialog_pop(path, sizeof(path), &code);
-            if (rc == 0 && code == 1) {
-                if (g_dialog_pending == 1) {
-                    (void)load_file(path);
-                } else if (g_dialog_pending == 2) {
-                    (void)save_file(path);
-                }
-                g_dialog_pending = 0;
-            } else if (rc == 0 && code == 0) {
-                g_dialog_pending = 0;
+            if (window_dialog_pop(path, sizeof(path), &code) == 0) {
+                if (code == 1 && path[0]) (void)load_file(path);
+                dialog_open = 0;
             }
         }
 
-        draw_editor(id, w, h);
+        draw_editor(id);
         sys_wait_ticks(1);
     }
-
+    window_close(id);
     sys_exit(0);
 }

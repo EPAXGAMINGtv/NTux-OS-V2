@@ -435,6 +435,10 @@ int window_get_input_state(window_t id, window_input_state_t* out) {
     if (sys_fs_read_file("/tmp/desk_input", out, sizeof(*out), &len) != 0) return -1;
     if (id != 0 && out->window_id != id) {
         out->focused = 0;
+        out->mouse_left = 0;
+        out->mouse_right = 0;
+        out->mouse_middle = 0;
+        out->mouse_scroll = 0;
     }
     if (id != 0 && out->window_id == id) {
         out->mouse_x -= (out->win_x + WINDOW_CLIENT_OFF_X);

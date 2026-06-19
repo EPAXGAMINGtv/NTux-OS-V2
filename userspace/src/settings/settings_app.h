@@ -10,6 +10,7 @@
 #define TIME_CONF_PATH "/conf/time.conf"
 #define KBD_CONF_PATH  "/conf/kbdlout.conf"
 #define FONT_CONF_PATH "/conf/font.conf"
+#define APPEARANCE_CONF_PATH "/conf/appearance.conf"
 
 #define FONT_PATH_MAX 256
 
@@ -25,6 +26,7 @@ typedef struct {
     int font_sel;
     int font_open;
     int font_scroll;
+    int dark_mode;
     char status[64];
     uint64_t status_until;
 } settings_state_t;
@@ -32,7 +34,8 @@ typedef struct {
 typedef enum {
     SETTINGS_ACT_NONE = 0,
     SETTINGS_ACT_SAVE = 1,
-    SETTINGS_ACT_CLOSE = 2
+    SETTINGS_ACT_CLOSE = 2,
+    SETTINGS_ACT_APPLY_APPEARANCE = 3
 } settings_action_t;
 
 int settings_timezone_count(void);

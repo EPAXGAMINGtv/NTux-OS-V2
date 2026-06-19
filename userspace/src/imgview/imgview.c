@@ -12,6 +12,14 @@ static int key_edge(int sc) {
     return pressed;
 }
 
+static int key_edge_focused(int focused, int sc) {
+    if (!focused) {
+        g_key_last[sc] = 0;
+        return 0;
+    }
+    return key_edge(sc);
+}
+
 static int read_start_path(char* out, size_t cap) {
     uint64_t len = 0;
     if (!out || cap == 0) return -1;
@@ -51,10 +59,15 @@ void ntux_user_entry(void) {
 
     for (;;) {
         if (window_should_close(id)) break;
-        if (key_edge(0x01)) break; /* Esc */
-        long ch = sys_getchar();
-        if (ch == 'o' || ch == 'O') {
-            window_open_file_picker("Open Image", "/", 0);
+        window_input_state_t in;
+        memset(&in, 0, sizeof(in));
+        (void)window_get_input_state(id, &in);
+        if (key_edge_focused(in.focused, 0x01)) break; /* Esc */
+        if (in.focused) {
+            long ch = sys_getchar();
+            if (ch == 'o' || ch == 'O') {
+                window_open_file_picker("Open Image", "/", 0);
+            }
         }
 
         char path[256];

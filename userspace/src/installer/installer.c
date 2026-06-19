@@ -756,7 +756,6 @@ static int wipe_range(uint64_t drive, uint64_t start, uint64_t sectors) {
         }
         at += step;
         left -= step;
-        if ((at & 0x0Fu) == 0u) inst_yield();
     }
     return 0;
 }
@@ -1181,13 +1180,13 @@ static void draw_installer(void) {
 }
 
 static int run_install(void) {
-    uint64_t drive = (g_selected >= 0) ? g_dev_ids[g_selected] : 0;
     ntux_block_device_info_t dev;
 
     if (g_selected < 0 || g_selected >= g_dev_count) {
         inst_log_line("[err] no drive selected");
         return -1;
     }
+    uint64_t drive = g_dev_ids[g_selected];
     memcpy(&dev, &g_devs[drive], sizeof(dev));
 
     int gpt_mode = g_part_scheme;
@@ -1238,6 +1237,10 @@ static int run_install(void) {
         }
     } else {
         ntux_mbr_part_req_t req;
+        if (drive > 255u) {
+            inst_log_line("[err] drive index too large for MBR");
+            return -1;
+        }
         memset(&req, 0, sizeof(req));
         req.drive = (uint8_t)drive;
         for (uint8_t p = 1; p <= 4; ++p) {
@@ -1474,14 +1477,17 @@ static void handle_click(int x, int y) {
             }
         }
         if (in_rect(x, y, INST_WIN_W - 164, 540, 140, 40) && g_selected >= 0) {
+            g_kbd_focus = 0;
             g_step = STEP_OPTIONS;
         }
     } else if (g_step == STEP_OPTIONS) {
         if (in_rect(x, y, 24, 540, 140, 40)) {
+            g_kbd_focus = 0;
             g_step = STEP_SELECT;
             return;
         }
         if (in_rect(x, y, INST_WIN_W - 164, 540, 140, 40)) {
+            g_kbd_focus = 0;
             g_step = STEP_CONFIRM;
             return;
         }
@@ -1496,6 +1502,7 @@ static void handle_click(int x, int y) {
         if (in_rect(x, y, 740, 250, 150, 28)) g_fs_choice = 4;
     } else if (g_step == STEP_CONFIRM) {
         if (in_rect(x, y, 24, 540, 140, 40)) {
+            g_kbd_focus = 0;
             g_step = STEP_OPTIONS;
             return;
         }
@@ -1503,6 +1510,7 @@ static void handle_click(int x, int y) {
             g_confirm = !g_confirm;
         }
         if (in_rect(x, y, INST_WIN_W - 164, 540, 140, 40) && g_confirm) {
+            g_kbd_focus = 0;
             g_step = STEP_RUNNING;
         }
     } else if (g_step == STEP_DONE || g_step == STEP_ERROR) {

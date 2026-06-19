@@ -200,6 +200,8 @@ static void bg_apply_vignette(uint32_t* out) {
     }
 }
 
+static int g_shutdown_btn_x = 0, g_shutdown_btn_y = 0, g_shutdown_btn_w = 0, g_shutdown_btn_h = 0;
+
 static void draw_header(void) {
     fill_rect(0, 0, (int)g_fb.width, 30, LOGIN_BAR_BG);
     fill_rect(0, 29, (int)g_fb.width, 1, LOGIN_BAR_BORDER);
@@ -212,6 +214,14 @@ static void draw_header(void) {
         int tx = (int)g_fb.width - (int)strlen(buf) * 8 - 18;
         draw_text_shadow(tx, 10, buf, LOGIN_TEXT_MAIN, LOGIN_TEXT_SHADOW);
     }
+    int bx = (int)g_fb.width - 88;
+    int by = 4;
+    int bw = 78;
+    int bh = 22;
+    g_shutdown_btn_x = bx; g_shutdown_btn_y = by; g_shutdown_btn_w = bw; g_shutdown_btn_h = bh;
+    fill_rect(bx, by, bw, bh, 0xAA3A2020u);
+    draw_rect(bx, by, bw, bh, 0xCC5A3030u);
+    draw_text(bx + 10, by + 7, "Shutdown", 0xFFCC8888u);
 }
 
 static int bg_load_image(const char* path, uint32_t* out) {
@@ -303,11 +313,56 @@ static int path_is_image_ext(const char* path) {
            str_ends_with_ci(path, ".jpg") || str_ends_with_ci(path, ".jpeg");
 }
 
+static int str_starts_with(const char* s, const char* prefix) {
+    if (!s || !prefix) return 0;
+    while (*prefix) { if (*s != *prefix) return 0; s++; prefix++; }
+    return 1;
+}
+
+static int is_real_drive_name(const char* name) {
+    if (!name || !name[0]) return 0;
+    return str_starts_with(name, "fat") || str_starts_with(name, "ext") ||
+           str_starts_with(name, "disk") || str_starts_with(name, "flash") ||
+           str_starts_with(name, "drive") || str_starts_with(name, "nvme") ||
+           str_starts_with(name, "sd");
+}
+
+static int detect_persist_root(char* out, size_t out_cap) {
+    ntux_dirent_t ents[128];
+    uint64_t count = 0;
+    if (sys_fs_list_dir("/", ents, 128, &count) != 0) { out[0] = '\0'; return -1; }
+    if (count > 128) count = 128;
+    for (uint64_t i = 0; i < count; ++i) {
+        if (!ents[i].is_dir) continue;
+        if (strcmp(ents[i].name, ".") == 0 || strcmp(ents[i].name, "..") == 0) continue;
+        if (str_starts_with(ents[i].name, "iso") || str_starts_with(ents[i].name, "cd")) continue;
+        if (!is_real_drive_name(ents[i].name)) continue;
+        char boot_test[128];
+        snprintf(boot_test, sizeof(boot_test), "/%s/boot", ents[i].name);
+        if (sys_fs_exists(boot_test) > 0 ||
+            sys_fs_exists("/boot/limine.conf") == 0) {
+            snprintf(out, out_cap, "/%s", ents[i].name);
+            return 0;
+        }
+    }
+    if (sys_fs_exists("/boot/limine.conf") == 0) {
+        snprintf(out, out_cap, "/");
+        return 0;
+    }
+    out[0] = '\0';
+    return -1;
+}
+
 static void bg_load_from_config(void) {
     char cfg[512];
     uint64_t ln = 0;
     bg_gradient_fill(g_bg);
-    if (sys_fs_read_file("/etc/desktop.conf", cfg, sizeof(cfg) - 1u, &ln) == 0) {
+    char config_path[128] = "/etc/desktop.conf";
+    char persist[32] = "";
+    if (detect_persist_root(persist, sizeof(persist)) == 0 && persist[0]) {
+        snprintf(config_path, sizeof(config_path), "%s/etc/desktop.conf", persist);
+    }
+    if (sys_fs_read_file(config_path, cfg, sizeof(cfg) - 1u, &ln) == 0) {
         if (ln >= sizeof(cfg)) ln = sizeof(cfg) - 1u;
         cfg[ln] = '\0';
         char wallpaper[256] = "";
@@ -624,6 +679,9 @@ void ntux_user_entry(void) {
     for (;;) {
         int clicked = 0;
         mouse_poll(&clicked);
+        if (clicked && in_rect(g_mouse_x, g_mouse_y, g_shutdown_btn_x, g_shutdown_btn_y, g_shutdown_btn_w, g_shutdown_btn_h)) {
+            sys_shutdown();
+        }
         memcpy(g_frame, g_bg, g_pixels * sizeof(uint32_t));
         draw_header();
         int center_y = (int)g_fb.height / 2 - (g_stage == 0 ? 160 : 180);

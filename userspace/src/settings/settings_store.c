@@ -44,6 +44,9 @@ static int write_conf(const char* path, const char* value) {
     if (strcmp(path, FONT_CONF_PATH) == 0) {
         return (sys_fs_create_file("/conf", "font.conf", value, len) == 0) ? 0 : -1;
     }
+    if (strcmp(path, APPEARANCE_CONF_PATH) == 0) {
+        return (sys_fs_create_file("/conf", "appearance.conf", value, len) == 0) ? 0 : -1;
+    }
     return -1;
 }
 
@@ -54,6 +57,7 @@ void settings_load_state(settings_state_t* st) {
     st->tz_open = 0; st->kbd_open = 0;
     st->tz_scroll = 0; st->kbd_scroll = 0;
     st->font_sel = 0; st->font_open = 0; st->font_scroll = 0;
+    st->dark_mode = 0;
     snprintf(st->font_path, sizeof(st->font_path), "%s", settings_font_at(0));
     st->status[0] = '\0'; st->status_until = 0;
 
@@ -72,6 +76,10 @@ void settings_load_state(settings_state_t* st) {
             if (strcmp(st->font_path, settings_font_at(i)) == 0) { st->font_sel = i; break; }
         }
     }
+    if (read_conf(APPEARANCE_CONF_PATH, tmp, sizeof(tmp)) == 0) {
+        st->dark_mode = (strcmp(tmp, "1") == 0 || strcmp(tmp, "true") == 0 ||
+                         strcmp(tmp, "on") == 0 || strcmp(tmp, "yes") == 0) ? 1 : 0;
+    }
 }
 
 int settings_save_state(const settings_state_t* st) {
@@ -79,7 +87,8 @@ int settings_save_state(const settings_state_t* st) {
     int ok1 = write_conf(TIME_CONF_PATH, settings_timezone_at(st->tz_sel)) == 0;
     int ok2 = write_conf(KBD_CONF_PATH, settings_kbd_at(st->kbd_sel)) == 0;
     int ok3 = write_conf(FONT_CONF_PATH, st->font_path) == 0;
-    return (ok1 && ok2 && ok3) ? 0 : -1;
+    int ok4 = write_conf(APPEARANCE_CONF_PATH, st->dark_mode ? "true" : "false") == 0;
+    return (ok1 && ok2 && ok3 && ok4) ? 0 : -1;
 }
 
 void settings_show_status(settings_state_t* st, const char* msg) {

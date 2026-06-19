@@ -42,21 +42,23 @@ void ntux_user_entry(void) {
         (void)window_get_input_state(id, &st_in);
         if (st_in.close_requested) break;
 
-        int tab_edge = (sys_kbd_is_pressed(0x0F) > 0) && !key_last[0x0F];
-        int enter_edge = (sys_kbd_is_pressed(0x1C) > 0) && !key_last[0x1C];
-        int space_edge = (sys_kbd_is_pressed(0x39) > 0) && !key_last[0x39];
-        int up_edge = (sys_kbd_is_pressed(0x48) > 0) && !key_last[0x48];
-        int down_edge = (sys_kbd_is_pressed(0x50) > 0) && !key_last[0x50];
-        int left_edge = (sys_kbd_is_pressed(0x4B) > 0) && !key_last[0x4B];
-        int right_edge = (sys_kbd_is_pressed(0x4D) > 0) && !key_last[0x4D];
+        int focused = st_in.focused ? 1 : 0;
+        if (!focused) memset(key_last, 0, sizeof(key_last));
+        int tab_edge = focused && (sys_kbd_is_pressed(0x0F) > 0) && !key_last[0x0F];
+        int enter_edge = focused && (sys_kbd_is_pressed(0x1C) > 0) && !key_last[0x1C];
+        int space_edge = focused && (sys_kbd_is_pressed(0x39) > 0) && !key_last[0x39];
+        int up_edge = focused && (sys_kbd_is_pressed(0x48) > 0) && !key_last[0x48];
+        int down_edge = focused && (sys_kbd_is_pressed(0x50) > 0) && !key_last[0x50];
+        int left_edge = focused && (sys_kbd_is_pressed(0x4B) > 0) && !key_last[0x4B];
+        int right_edge = focused && (sys_kbd_is_pressed(0x4D) > 0) && !key_last[0x4D];
 
-        key_last[0x0F] = (uint8_t)(sys_kbd_is_pressed(0x0F) > 0);
-        key_last[0x1C] = (uint8_t)(sys_kbd_is_pressed(0x1C) > 0);
-        key_last[0x39] = (uint8_t)(sys_kbd_is_pressed(0x39) > 0);
-        key_last[0x48] = (uint8_t)(sys_kbd_is_pressed(0x48) > 0);
-        key_last[0x50] = (uint8_t)(sys_kbd_is_pressed(0x50) > 0);
-        key_last[0x4B] = (uint8_t)(sys_kbd_is_pressed(0x4B) > 0);
-        key_last[0x4D] = (uint8_t)(sys_kbd_is_pressed(0x4D) > 0);
+        key_last[0x0F] = (uint8_t)(focused && sys_kbd_is_pressed(0x0F) > 0);
+        key_last[0x1C] = (uint8_t)(focused && sys_kbd_is_pressed(0x1C) > 0);
+        key_last[0x39] = (uint8_t)(focused && sys_kbd_is_pressed(0x39) > 0);
+        key_last[0x48] = (uint8_t)(focused && sys_kbd_is_pressed(0x48) > 0);
+        key_last[0x50] = (uint8_t)(focused && sys_kbd_is_pressed(0x50) > 0);
+        key_last[0x4B] = (uint8_t)(focused && sys_kbd_is_pressed(0x4B) > 0);
+        key_last[0x4D] = (uint8_t)(focused && sys_kbd_is_pressed(0x4D) > 0);
 
         if (tab_edge) {
             st.focus = (st.focus + 1) % 5;
@@ -104,7 +106,8 @@ void ntux_user_entry(void) {
                 st.kbd_open = 0;
             } else if (st.focus == 2) {
                 if (settings_save_state(&st) == 0) {
-                    settings_show_status(&st, "Saved time, kbd, and font config");
+                    window_set_theme(st.dark_mode ? "Dark" : "Light");
+                    settings_show_status(&st, "Saved settings");
                 } else {
                     settings_show_status(&st, "Save failed");
                 }
@@ -130,10 +133,15 @@ void ntux_user_entry(void) {
             settings_action_t act = settings_handle_click(&st, st_in.mouse_x, st_in.mouse_y);
             if (act == SETTINGS_ACT_SAVE) {
                 if (settings_save_state(&st) == 0) {
-                    settings_show_status(&st, "Saved time, kbd, and font config");
+                    window_set_theme(st.dark_mode ? "Dark" : "Light");
+                    settings_show_status(&st, "Saved settings");
                 } else {
                     settings_show_status(&st, "Save failed");
                 }
+            } else if (act == SETTINGS_ACT_APPLY_APPEARANCE) {
+                (void)settings_save_state(&st);
+                (void)window_set_theme(st.dark_mode ? "Dark" : "Light");
+                settings_show_status(&st, "Appearance updated");
             } else if (act == SETTINGS_ACT_CLOSE) {
                 break;
             }

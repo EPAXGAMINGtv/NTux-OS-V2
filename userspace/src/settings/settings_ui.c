@@ -14,7 +14,7 @@ static void draw_header(window_t id) {
         (void)window_draw_rect(id, 0, i, SET_WIN_W, 1, c, 1);
     }
     (void)window_draw_text(id, 20, 18, 0xFFEAF4FFu, "NTux Settings");
-    (void)window_draw_text(id, 20, 42, 0xFF9DC3E3u, "Time zone, keyboard layout, and font");
+    (void)window_draw_text(id, 20, 42, 0xFF9DC3E3u, "Time zone, keyboard, font, and appearance");
 }
 
 static void draw_dropdown(window_t id, int x, int y, int w,
@@ -37,6 +37,7 @@ void settings_draw(window_t id, const settings_state_t* st) {
     int right_x = left_x + drop_w + 24;
     int font_x = 24;
     int font_y = drop_y + 36 + 6 + 7 * 24 + 16;
+    int dark_y = font_y + 54;
     int list_item_h = 24;
     int max_visible = 7;
     int list_y = drop_y + 36 + 6;
@@ -52,6 +53,11 @@ void settings_draw(window_t id, const settings_state_t* st) {
     draw_dropdown(id, font_x, font_y, SET_WIN_W - 48, "Font",
                   st ? st->font_path : settings_font_at(0),
                   st ? st->font_open : 0, st ? (st->focus == 3) : 0);
+
+    (void)window_draw_text(id, font_x, dark_y + 2, 0xFFB9CBE0u, "Dark mode");
+    (void)window_draw_rect(id, font_x + 130, dark_y, 54, 24, st && st->dark_mode ? 0xFF2F80EDu : 0xFF273443u, 1);
+    (void)window_draw_rect(id, font_x + 130, dark_y, 54, 24, 0xFF6E8296u, 0);
+    (void)window_draw_rect(id, font_x + 134 + ((st && st->dark_mode) ? 28 : 0), dark_y + 4, 18, 16, 0xFFEAF4FFu, 1);
 
     if (st && st->tz_open) {
         (void)window_draw_dropdown_list(id, left_x, list_y, drop_w, list_item_h,
@@ -89,6 +95,7 @@ settings_action_t settings_handle_click(settings_state_t* st, int mx, int my) {
     int right_x = left_x + drop_w + 24;
     int font_x = 24;
     int font_y = drop_y + 36 + 6 + 7 * 24 + 16;
+    int dark_y = font_y + 54;
     int list_item_h = 24;
     int max_visible = 7;
     int list_y = drop_y + 36 + 6;
@@ -108,6 +115,11 @@ settings_action_t settings_handle_click(settings_state_t* st, int mx, int my) {
     if (point_in(mx, my, font_x, font_y, SET_WIN_W - 48, 36)) {
         st->focus = 3; st->font_open = !st->font_open; st->tz_open = 0; st->kbd_open = 0;
         return SETTINGS_ACT_NONE;
+    }
+    if (point_in(mx, my, font_x + 130, dark_y, 54, 24)) {
+        st->dark_mode = st->dark_mode ? 0 : 1;
+        st->focus = 3;
+        return SETTINGS_ACT_APPLY_APPEARANCE;
     }
 
     if (st->tz_open) {

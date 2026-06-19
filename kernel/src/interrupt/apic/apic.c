@@ -5,7 +5,8 @@
 #include <interrupt/pic.h>
 #include <interrupt/timer.h>
 #include <lib/string.h>
-#include <drivers/acpi/acpi.h>
+#include <drivers/ACPI/acpi.h>
+#include <drivers/ACPI/acpi_structures.h>
 
 
 
@@ -58,7 +59,7 @@ static int shutdown_seconds = 0;
 static bool shutdown_cancelled = false;
 static bool apic_bases_detected = false;
 
-static void apic_detect_bases_from_madt(const struct acpi_sdt_header* madt);
+static void apic_detect_bases_from_madt(const struct acpi_sdt* madt);
 
 bool get_shutdown_pending(void) {
     return shutdown_pending;
@@ -343,8 +344,8 @@ bool apic_init(void) {
     if (NTUX_FORCE_PIC) {
         if (!apic_bases_detected) {
             if (
-                acpi_init()) {
-                const struct acpi_sdt_header* madt = acpi_find_table("APIC");
+                acpi_init() == 0) {
+                const struct acpi_sdt* madt = acpi_get_sdt("APIC");
                 apic_detect_bases_from_madt(madt);
             }
         }
@@ -356,8 +357,8 @@ bool apic_init(void) {
     }
     kprint("[APIC] Starting APIC initialization...\n");
     if (!apic_bases_detected) {
-        if (acpi_init()) {
-            const struct acpi_sdt_header* madt = acpi_find_table("APIC");
+        if (acpi_init() == 0) {
+            const struct acpi_sdt* madt = acpi_get_sdt("APIC");
             apic_detect_bases_from_madt(madt);
         }
     }
@@ -414,19 +415,10 @@ bool apic_init(void) {
 
 
 
-struct acpi_madt {
-    struct acpi_sdt_header header;
-    uint32_t lapic_address;
-    uint32_t flags;
-} __attribute__((packed));
-
-struct acpi_madt_entry_header {
-    uint8_t type;
-    uint8_t length;
-} __attribute__((packed));
+// acpi_madt, madt_entry_header, madt_iso from <drivers/ACPI/acpi_structures.h>
 
 struct acpi_madt_ioapic {
-    struct acpi_madt_entry_header h;
+    struct madt_entry_header h;
     uint8_t ioapic_id;
     uint8_t reserved;
     uint32_t ioapic_addr;
@@ -434,27 +426,19 @@ struct acpi_madt_ioapic {
 } __attribute__((packed));
 
 struct acpi_madt_lapic_override {
-    struct acpi_madt_entry_header h;
+    struct madt_entry_header h;
     uint16_t reserved;
     uint64_t lapic_addr;
 } __attribute__((packed));
 
-struct acpi_madt_iso {
-    struct acpi_madt_entry_header h;
-    uint8_t bus;
-    uint8_t source;
-    uint32_t gsi;
-    uint16_t flags;
-} __attribute__((packed));
-
-static void apic_detect_bases_from_madt(const struct acpi_sdt_header* madt) {
+static void apic_detect_bases_from_madt(const struct acpi_sdt* madt) {
     if (!madt) return;
     if (memcmp(madt->signature, "APIC", 4) != 0) return;
     if (madt->length < sizeof(struct acpi_madt)) return;
 
     const struct acpi_madt* m = (const struct acpi_madt*)madt;
-    if (m->lapic_address != 0) {
-        local_apic_base = (uintptr_t)m->lapic_address;
+    if (m->lapic_addr != 0) {
+        local_apic_base = (uintptr_t)m->lapic_addr;
     }
 
     const uint8_t* cur = (const uint8_t*)m + sizeof(struct acpi_madt);
@@ -465,8 +449,8 @@ static void apic_detect_bases_from_madt(const struct acpi_sdt_header* madt) {
         g_irq_level[i] = 0;    /* edge */
     }
 
-    while (cur + sizeof(struct acpi_madt_entry_header) <= end) {
-        const struct acpi_madt_entry_header* h = (const struct acpi_madt_entry_header*)cur;
+    while (cur + sizeof(struct madt_entry_header) <= end) {
+        const struct madt_entry_header* h = (const struct madt_entry_header*)cur;
         if (h->length < sizeof(*h) || cur + h->length > end) break;
 
         if (h->type == 1 && h->length >= sizeof(struct acpi_madt_ioapic)) {
@@ -475,8 +459,8 @@ static void apic_detect_bases_from_madt(const struct acpi_sdt_header* madt) {
                 io_apic_base = (uintptr_t)io->ioapic_addr;
                 io_apic_gsi_base = io->gsi_base;
             }
-        } else if (h->type == 2 && h->length >= sizeof(struct acpi_madt_iso)) {
-            const struct acpi_madt_iso* iso = (const struct acpi_madt_iso*)cur;
+        } else if (h->type == 2 && h->length >= sizeof(struct madt_iso)) {
+            const struct madt_iso* iso = (const struct madt_iso*)cur;
             if (iso->bus == 0 && iso->source < 16) {
                 g_irq_to_gsi[iso->source] = iso->gsi;
                 uint16_t flags = iso->flags;
@@ -571,14 +555,7 @@ void system_reboot(void) {
     
     __asm__ volatile("cli");
 
-    if (acpi_init()) {
-        if (acpi_try_reset()) {
-            while (1) {
-                __asm__ volatile("hlt");
-            }
-        }
-    }
-    
+    acpi_init();
     
     outb(0x64, 0xFE);  
 
@@ -611,51 +588,25 @@ void system_reboot(void) {
 void system_shutdown(void) {
     kprint("[SYSTEM] Shutting down...\n");
     
-    
     __asm__ volatile("cli");
-    
-    
-    outb(0xA1, 0xFF);  
-    outb(0x21, 0xFF);  
-    
-    
-    acpi_init();
-    acpi_enter_sleep(PM1_SLEEP_TYPE_S5);
-    
-    
-    kprint("[SYSTEM] ACPI shutdown failed, trying APM...\n");
-    try_apm_poweroff();
-    
-    
-    try_qemu_poweroff();
-    
-    
-    kprint("[SYSTEM] Shutdown failed, halting...\n");
-    while (1) {
-        __asm__ volatile("hlt");
-    }
+    outb(0xA1, 0xFF);
+    outb(0x21, 0xFF);
+
+    acpi_shutdown();
+    // never reached
 }
 
 
 void system_poweroff(void) {
     kprint("[SYSTEM] Powering off...\n");
     
-    
     __asm__ volatile("cli");
-    
-    
     outb(0xA1, 0xFF);
     outb(0x21, 0xFF);
-    
-    
-    acpi_enter_sleep(PM1_SLEEP_TYPE_S5);
-    
-    
-    kprint("[SYSTEM] ACPI poweroff failed, trying APM...\n");
-    try_apm_poweroff();
-    
-    
-    try_qemu_poweroff();
+
+    acpi_init();
+    acpi_shutdown();
+    // never reached
     
     
     kprint("[SYSTEM] Poweroff failed, halting...\n");

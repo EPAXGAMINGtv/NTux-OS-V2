@@ -4,6 +4,7 @@
 #include <drivers/framebuffer/kprint.h>
 #include <drivers/pci/pci.h>
 #include <lib/string.h>
+#include <mm/hhdm.h>
 
 #define SDHCI_MAX_HOSTS 4
 #define SDHCI_TIMEOUT_SPINS 2000000
@@ -646,7 +647,7 @@ static void sdhci_probe_device(uint32_t bus, uint32_t device, uint32_t function,
     h->bus = (uint8_t)bus;
     h->dev = (uint8_t)device;
     h->func = (uint8_t)function;
-    h->regs = (volatile uint8_t*)mmio_phys;
+    h->regs = (volatile uint8_t*)(uintptr_t)(mmio_phys + hhdm_offset_get());
     h->caps = sdhci_read32(h, SDHCI_CAPABILITIES);
     h->caps1 = sdhci_read32(h, SDHCI_CAPABILITIES_1);
 

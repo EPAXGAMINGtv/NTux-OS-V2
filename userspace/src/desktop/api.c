@@ -235,8 +235,12 @@ static int deskapi_remove_icon(uint64_t id) {
 
 static void deskapi_apply_theme(const char* name) {
     if (!name || !name[0]) return;
-    if (strcmp(name, "Ocean") == 0) {
+    if (strcmp(name, "Light") == 0 || strcmp(name, "Ocean") == 0) {
         g_theme_index = 0;
+        return;
+    }
+    if (strcmp(name, "Dark") == 0 || strcmp(name, "Mono") == 0) {
+        g_theme_index = 1;
         return;
     }
     g_theme_index = 0;
@@ -288,13 +292,16 @@ static void deskapi_handle_message(const window_msg_t* msg) {
         }
         case WINDOW_CMD_SET_IMAGE: {
             char buf[512];
-            int n = snprintf(buf, sizeof(buf), "%llx\n%s\n%d",
+            int n = snprintf(buf, sizeof(buf), "%llx\n%s\n%d\n0\n0\n",
                 (unsigned long long)msg->id, msg->text, (int)msg->flags);
             if (n > 0 && (size_t)n < sizeof(buf)) {
-                if (sys_fs_write_file("/tmp/imgdecode_req", buf, (uint64_t)n) == 0) {
-                    (void)sys_task_add("/boot/modules/imgdecode.elf");
-                } else if (sys_fs_create_file("/tmp", "imgdecode_req", buf, (uint64_t)n) == 0) {
-                    (void)sys_task_add("/boot/modules/imgdecode.elf");
+                long tid = sys_task_add("/boot/modules/imgdecode.elf");
+                if (tid >= 0) {
+                    char req_path[64];
+                    snprintf(req_path, sizeof(req_path), "/tmp/imgdecode_req.%ld", tid);
+                    if (sys_fs_write_file(req_path, buf, (uint64_t)n) != 0 &&
+                        sys_fs_create_file("/tmp", req_path + 5, buf, (uint64_t)n) != 0) {
+                    }
                 }
             }
             break;
