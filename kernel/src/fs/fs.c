@@ -15,6 +15,7 @@
 #include <lib/string.h>
 
 static ramfs_t g_root_ramfs;
+static vfs_union_ctx_t g_root_union;
 static fat_fs_t g_fat_mounts[8];
 static ext2_fs_t g_ext2_mounts[8];
 static ext4_fs_t g_ext4_mounts[8];
@@ -27,6 +28,7 @@ static uint32_t g_mount_generation;
 static int g_fs_persist_busy;
 static int g_fs_persist_enabled;
 static int g_root_score;
+static char g_fs_primary_mount[32] = "";
 static uint64_t g_fs_read_bytes = 0;
 static uint64_t g_fs_write_bytes = 0;
 
@@ -325,6 +327,79 @@ static int fs_root_score_from_kind(fs_kind_t kind) {
     if (kind == FS_KIND_EXT2) return 2;
     if (kind == FS_KIND_FAT) return 1;
     return 0;
+}
+
+static void fs_detect_primary_overlay(void) {
+    vfs_dirent_t ents[128];
+    size_t count = 0;
+    if (vfs_list_dir("/", ents, 128, &count) != 0) return;
+
+    char fallback_path[32] = "";
+    char chosen_path[32] = "";
+
+    for (size_t i = 0; i < count; ++i) {
+        if (!ents[i].is_dir) continue;
+        if (strcmp(ents[i].name, ".") == 0 || strcmp(ents[i].name, "..") == 0) continue;
+        if (strncmp(ents[i].name, "iso", 3) == 0) continue;
+        int is_drive = 0;
+        if (strncmp(ents[i].name, "fat", 3) == 0 ||
+            strncmp(ents[i].name, "ext", 3) == 0 ||
+            strncmp(ents[i].name, "disk", 4) == 0) is_drive = 1;
+        if (!is_drive) continue;
+
+        char mount_path[32];
+        size_t mp = 0;
+        mount_path[mp++] = '/';
+        size_t ni = 0;
+        while (ents[i].name[ni] && mp < 31) mount_path[mp++] = ents[i].name[ni++];
+        mount_path[mp] = '\0';
+
+        char boot_test[VFS_MAX_PATH];
+        {
+            size_t p = 0;
+            boot_test[p++] = '/';
+            size_t bi = 0;
+            while (ents[i].name[bi] && p < sizeof(boot_test) - 5)
+                boot_test[p++] = ents[i].name[bi++];
+            boot_test[p++] = '/';
+            boot_test[p++] = 'b'; boot_test[p++] = 'o';
+            boot_test[p++] = 'o'; boot_test[p++] = 't';
+            boot_test[p] = '\0';
+        }
+
+        if (vfs_exists(boot_test) > 0) {
+            size_t ci = 0;
+            while (mount_path[ci]) { chosen_path[ci] = mount_path[ci]; ci++; }
+            chosen_path[ci] = '\0';
+            break;
+        }
+
+        if (!fallback_path[0]) {
+            size_t fi = 0;
+            while (mount_path[fi]) { fallback_path[fi] = mount_path[fi]; fi++; }
+            fallback_path[fi] = '\0';
+        }
+    }
+
+    const char* path = chosen_path[0] ? chosen_path : fallback_path;
+    if (!path[0]) return;
+
+    const vfs_backend_ops_t* drive_ops = NULL;
+    void* drive_ctx = NULL;
+    if (vfs_get_mount(path, &drive_ops, &drive_ctx, NULL) != 0 || !drive_ops) return;
+
+    g_root_union.ops_a = ramfs_backend_ops();
+    g_root_union.ctx_a = &g_root_ramfs;
+    g_root_union.ops_b = drive_ops;
+    g_root_union.ctx_b = drive_ctx;
+
+    if (vfs_mount("/", vfs_union_backend_ops(), &g_root_union) != 0) return;
+
+    g_fs_primary_mount[0] = '\0';
+    size_t gi = 0;
+    while (path[gi] && gi < 31) g_fs_primary_mount[gi] = path[gi++];
+    g_fs_primary_mount[gi] = '\0';
+    kprintf("[FS] union overlay mounted at / with secondary=%s\n", g_fs_primary_mount);
 }
 
 static void fs_ensure_linux_dirs(void) {
@@ -1029,6 +1104,7 @@ void fs_init(void) {
     g_fs_persist_enabled = 0;
     kprintf(" persist=0 (FORCIBLY DISABLED)\n");
 
+    fs_detect_primary_overlay();
     fs_ensure_linux_dirs();
 
     kprint("[FS] VFS mount table after block probing:\n");
@@ -1045,6 +1121,7 @@ void fs_rescan_storage(void) {
     for (size_t i = 0; i < drives; ++i) {
         fs_probe_partitions((uint8_t)i);
     }
+    fs_detect_primary_overlay();
     fs_ensure_linux_dirs();
 }
 

@@ -5,6 +5,7 @@
 #include <sched/thread.h>
 
 static vfs_mount_t g_mounts[VFS_MAX_MOUNTS];
+static char g_overlay_mount_path[VFS_MAX_PATH] = "";
 
 static size_t vfs_strnlen(const char* s, size_t cap) {
     size_t i = 0;
@@ -107,6 +108,21 @@ static const vfs_mount_t* vfs_find_mount(const char* path, const char** out_rela
 
 void vfs_init(void) {
     memset(g_mounts, 0, sizeof(g_mounts));
+}
+
+int vfs_set_overlay(const char* mount_path) {
+    if (!mount_path || !mount_path[0]) {
+        g_overlay_mount_path[0] = '\0';
+        return 0;
+    }
+    vfs_copy_string(g_overlay_mount_path, sizeof(g_overlay_mount_path), mount_path);
+    return 0;
+}
+
+int vfs_get_overlay(char* out, size_t cap) {
+    if (!out || cap == 0) return -1;
+    vfs_copy_string(out, cap, g_overlay_mount_path);
+    return 0;
 }
 
 int vfs_mount(const char* mount_point, const vfs_backend_ops_t* ops, void* ctx) {

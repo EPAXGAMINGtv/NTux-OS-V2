@@ -88,6 +88,7 @@ int settings_save_state(const settings_state_t* st) {
     int ok2 = write_conf(KBD_CONF_PATH, settings_kbd_at(st->kbd_sel)) == 0;
     int ok3 = write_conf(FONT_CONF_PATH, st->font_path) == 0;
     int ok4 = write_conf(APPEARANCE_CONF_PATH, st->dark_mode ? "true" : "false") == 0;
+
     return (ok1 && ok2 && ok3 && ok4) ? 0 : -1;
 }
 

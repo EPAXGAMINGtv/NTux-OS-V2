@@ -36,8 +36,18 @@ typedef struct {
     void* ctx;
 } vfs_mount_t;
 
+typedef struct {
+    const vfs_backend_ops_t* ops_a;
+    void* ctx_a;
+    const vfs_backend_ops_t* ops_b;
+    void* ctx_b;
+} vfs_union_ctx_t;
+
 void vfs_init(void);
 int vfs_mount(const char* mount_point, const vfs_backend_ops_t* ops, void* ctx);
+int vfs_set_overlay(const char* mount_path);
+int vfs_get_overlay(char* out, size_t cap);
+const vfs_backend_ops_t* vfs_union_backend_ops(void);
 
 int vfs_mkdir(const char* path, uint16_t mode);
 int vfs_create_file(const char* path, uint16_t mode, const void* data, size_t len);
