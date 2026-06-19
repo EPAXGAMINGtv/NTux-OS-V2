@@ -49,7 +49,7 @@ typedef struct thread {
     uint8_t rq_queued;
 } thread_t;
 
-#define MAX_THREADS 64
+#define MAX_THREADS 4096
 extern thread_t* thread_list[MAX_THREADS];
 extern int current_thread_id;
 extern int next_thread_id;

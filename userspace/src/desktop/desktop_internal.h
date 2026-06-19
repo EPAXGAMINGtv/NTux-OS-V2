@@ -46,6 +46,7 @@ void desk_term_write_for_tid(int tid, const char* s);
 void desktop_mark_dirty(void);
 void desktop_notify(const char* title, const char* body);
 void img_job_enqueue_window_image(uint64_t win_id, const char* path, int desired_channels);
+void img_job_enqueue_window_icon(uint64_t win_id, const char* path);
 
 int str_append(char* out, size_t cap, const char* s);
 int str_append_char(char* out, size_t cap, char c);

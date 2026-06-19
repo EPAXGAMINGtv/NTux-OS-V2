@@ -4530,6 +4530,23 @@ static void img_job_enqueue(uint8_t type, int idx, const char* path, int max_w, 
     g_img_job_count++;
 }
 
+void img_job_enqueue_window_icon(uint64_t win_id, const char* path) {
+    if (!path || !path[0]) return;
+    if (g_img_job_count >= IMG_JOB_MAX) return;
+    img_job_t* job = &g_img_jobs[g_img_job_tail];
+    job->type = IMG_JOB_WINDOW_IMAGE;
+    job->idx = -1;
+    job->max_w = 0;
+    job->max_h = 0;
+    strncpy(job->path, path, sizeof(job->path) - 1);
+    job->path[sizeof(job->path) - 1] = '\0';
+    job->browser_id = 0;
+    job->win_id = win_id;
+    job->desired_channels = 4;
+    g_img_job_tail = (g_img_job_tail + 1) % IMG_JOB_MAX;
+    g_img_job_count++;
+}
+
 void img_job_enqueue_window_image(uint64_t win_id, const char* path, int desired_channels) {
     if (!path || !path[0]) return;
     if (g_img_job_count >= IMG_JOB_MAX) return;

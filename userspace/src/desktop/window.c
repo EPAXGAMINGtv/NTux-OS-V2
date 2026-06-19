@@ -260,15 +260,5 @@ void desk_window_set_icon(desk_window_t* w, const char* path) {
     w->icon_w = 0;
     w->icon_h = 0;
     if (!path || !path[0]) return;
-    image_t img;
-    if (image_decode_file_scaled(path, 3, 32, 32, &img) != 0) return;
-    if (!img.data || img.width <= 0 || img.height <= 0) {
-        image_free(&img);
-        return;
-    }
-    w->icon_data = img.data;
-    w->icon_w = (uint16_t)img.width;
-    w->icon_h = (uint16_t)img.height;
-    w->icon_ready = 1;
-    desktop_mark_dirty();
+    img_job_enqueue_window_icon(w->id, path);
 }
