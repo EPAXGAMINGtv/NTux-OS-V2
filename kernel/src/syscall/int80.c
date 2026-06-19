@@ -252,6 +252,7 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                     thread_list[tid]->state = THREAD_BLOCKED;
                     rq_remove(thread_list[tid]);
                     g_thread_blocked_count++;
+                    wake_list_add(thread_list[tid]);
                 }
             }
             thread_unlock_global();
@@ -271,6 +272,7 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                     if (!t) break;
                 }
                 if (t) {
+                    wake_list_remove(t);
                     t->state = THREAD_RUNNING;
                     t->wake_tick = 0;
                     rq_remove(t);

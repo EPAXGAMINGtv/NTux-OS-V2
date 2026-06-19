@@ -211,7 +211,7 @@ size_t readline(char *buf, size_t cap) {
     for (;;) {
         int c = getchar();
         if (c < 0) {
-            (void)sys_yield();
+            (void)sys_wait_ticks(1);
             continue;
         }
         if (c == '\r' || c == '\n') {

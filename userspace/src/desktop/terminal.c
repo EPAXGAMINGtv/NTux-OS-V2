@@ -1422,7 +1422,7 @@ char poll_char(void) {
     if (!desktop_wants_console_input()) {
         return 0;
     }
-    if (sys_console_force_claim() != 0) {
+    if (sys_console_claim() != 0) {
         return 0;
     }
     if (now - g_last_key_tick < debounce) return 0;

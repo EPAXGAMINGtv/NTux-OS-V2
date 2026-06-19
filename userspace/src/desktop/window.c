@@ -82,9 +82,6 @@ void window_compact_invisible(void) {
     }
     g_window_count = write;
     if (g_focus_index >= g_window_count) g_focus_index = g_window_count - 1;
-    for (int i = 0; i < g_window_count; ++i) {
-        if (g_windows[i].terminal) g_windows[i].term_slot = (uint8_t)(i % DESK_MAX_WINDOWS);
-    }
 }
 
 int window_find_recyclable_slot(void) {

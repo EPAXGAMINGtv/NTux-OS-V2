@@ -66,6 +66,7 @@ static void thread_init_common(thread_t* t, void (*entry)(void)) {
     t->rq_next = NULL;
     t->rq_prev = NULL;
     t->rq_queued = 0;
+    t->is_idle = 0;
     memset(t->fds, 0, sizeof(t->fds));
 
     t->stack = kmalloc(THREAD_STACK_SIZE);
@@ -166,11 +167,13 @@ void thread_reap_terminated(void) {
 int thread_kill(int tid) {
     if (tid < 0 || tid >= MAX_THREADS || !thread_list[tid]) return -1;
     thread_lock_spin();
-    if (thread_list[tid]->state == THREAD_BLOCKED && g_thread_blocked_count > 0) {
+    thread_t* t = thread_list[tid];
+    if (t->state == THREAD_BLOCKED && g_thread_blocked_count > 0) {
         g_thread_blocked_count--;
     }
-    rq_remove(thread_list[tid]);
-    thread_list[tid]->state = THREAD_TERMINATED;
+    wake_list_remove(t);
+    rq_remove(t);
+    t->state = THREAD_TERMINATED;
     thread_unlock_spin();
     return 0;
 }

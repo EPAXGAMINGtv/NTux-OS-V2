@@ -12,6 +12,37 @@ static thread_t* rq_head = NULL;
 static thread_t* rq_tail = NULL;
 static int rq_count = 0;
 
+/* ------------------ Wake-list (blocked threads) ------------------ */
+thread_t* wake_list_head = NULL;
+static thread_t* wake_list_tail = NULL;
+
+void wake_list_add(thread_t* t) {
+    if (!t || t->wl_queued) return;
+    t->wl_next = NULL;
+    t->wl_prev = wake_list_tail;
+    if (wake_list_tail)
+        wake_list_tail->wl_next = t;
+    else
+        wake_list_head = t;
+    wake_list_tail = t;
+    t->wl_queued = 1;
+}
+
+void wake_list_remove(thread_t* t) {
+    if (!t || !t->wl_queued) return;
+    if (t->wl_prev)
+        t->wl_prev->wl_next = t->wl_next;
+    else
+        wake_list_head = t->wl_next;
+    if (t->wl_next)
+        t->wl_next->wl_prev = t->wl_prev;
+    else
+        wake_list_tail = t->wl_prev;
+    t->wl_next = NULL;
+    t->wl_prev = NULL;
+    t->wl_queued = 0;
+}
+
 void rq_enqueue(thread_t* t) {
     if (!t || t->rq_queued) return;
     t->rq_next = NULL;

@@ -64,16 +64,18 @@ void timer_pit_config_c(void) {
 void timer_handler(void) {
     pit_update();
     uint64_t now = pit_ticks;
-    if (g_thread_blocked_count > 0 && thread_try_lock_global()) {
-        for (int i = 0; i < MAX_THREADS; ++i) {
-            thread_t* t = thread_list[i];
-            if (!t) continue;
+    if (wake_list_head != NULL && thread_try_lock_global()) {
+        thread_t* t = wake_list_head;
+        while (t) {
+            thread_t* next = t->wl_next;
             if (t->state == THREAD_BLOCKED && t->wake_tick > 0 && t->wake_tick <= now) {
                 t->state = THREAD_READY;
                 t->wake_tick = 0;
                 rq_enqueue(t);
+                wake_list_remove(t);
                 if (g_thread_blocked_count > 0) g_thread_blocked_count--;
             }
+            t = next;
         }
         thread_unlock_global();
     }

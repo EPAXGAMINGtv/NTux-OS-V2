@@ -47,13 +47,23 @@ typedef struct thread {
     int64_t quantum;
     int64_t priority;
     uint8_t rq_queued;
+    uint8_t is_idle;
+    /* Wake-list links (blocked threads with wake_tick > 0) */
+    struct thread* wl_next;
+    struct thread* wl_prev;
+    uint8_t wl_queued;
 } thread_t;
 
-#define MAX_THREADS 9096
+#define MAX_THREADS 1024
 extern thread_t* thread_list[MAX_THREADS];
 extern int current_thread_id;
 extern int next_thread_id;
 extern volatile uint32_t g_thread_blocked_count;
+
+/* Wake-list operations */
+extern thread_t* wake_list_head;
+void wake_list_add(thread_t* t);
+void wake_list_remove(thread_t* t);
 
 /* Ready queue operations */
 void rq_enqueue(thread_t* t);
