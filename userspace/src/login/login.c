@@ -740,9 +740,29 @@ void ntux_user_entry(void) {
                     (void)sys_fs_mkdir("/home", ".ntux");
                     (void)sys_fs_write_file("/home/.ntux/session_user", g_users[g_user_sel].name,
                                             (uint64_t)strlen(g_users[g_user_sel].name));
+                    /* Show "Logging in..." spinner for ~1.2s */
+                    uint64_t hz = (uint64_t)sys_get_timer_hz();
+                    if (hz == 0) hz = 200u;
+                    const char* spin = "|/-\\";
+                    uint64_t start = sys_get_ticks();
+                    uint64_t delay = hz + hz / 5u;
+                    while (sys_get_ticks() - start < delay) {
+                        memcpy(g_frame, g_bg, g_pixels * sizeof(uint32_t));
+                        draw_header();
+                        int cx = (int)g_fb.width / 2;
+                        int cy = (int)g_fb.height / 2;
+                        char msg[64];
+                        uint64_t elapsed = sys_get_ticks() - start;
+                        int phase = (int)(elapsed / (hz / 5u)) % 4;
+                        snprintf(msg, sizeof(msg), "%c Logging in...", spin[phase]);
+                        draw_text_shadow(cx - (int)strlen(msg) * 4, cy - 4, msg, LOGIN_ACCENT_BRIGHT, LOGIN_TEXT_SHADOW);
+                        draw_cursor();
+                        (void)sys_fb_blit32(g_frame, g_fb.width, g_fb.height, g_fb.width * 4u);
+                        sys_wait_ticks(2);
+                    }
                     long rc = start_desktop_task();
                     if (rc == 0) {
-                        /*for (int i = 0; i < 8; ++i)*/ (void)sys_yield();
+                        for (int i = 0; i < 8; ++i) (void)sys_yield();
                         sys_exit(0);
                     }
                     strncpy(g_status, "Desktop start failed", sizeof(g_status) - 1);

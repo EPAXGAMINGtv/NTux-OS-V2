@@ -217,7 +217,8 @@ enum {
     IMG_JOB_WALL_THUMB = 3,
     IMG_JOB_BROWSER_PREVIEW = 4,
     IMG_JOB_WALLPAPER = 5,
-    IMG_JOB_WINDOW_IMAGE = 6
+    IMG_JOB_WINDOW_IMAGE = 6,
+    IMG_JOB_WINDOW_ICON = 7
 };
 
 enum {
@@ -4534,10 +4535,10 @@ void img_job_enqueue_window_icon(uint64_t win_id, const char* path) {
     if (!path || !path[0]) return;
     if (g_img_job_count >= IMG_JOB_MAX) return;
     img_job_t* job = &g_img_jobs[g_img_job_tail];
-    job->type = IMG_JOB_WINDOW_IMAGE;
+    job->type = IMG_JOB_WINDOW_ICON;
     job->idx = -1;
-    job->max_w = 0;
-    job->max_h = 0;
+    job->max_w = 14;
+    job->max_h = 14;
     strncpy(job->path, path, sizeof(job->path) - 1);
     job->path[sizeof(job->path) - 1] = '\0';
     job->browser_id = 0;
@@ -4947,6 +4948,24 @@ static void img_job_pump(void) {
                     snprintf(req_path, sizeof(req_path), "/tmp/imgdecode_req.%ld", tid);
                     (void)(sys_fs_write_file(req_path, req, (uint64_t)n) == 0 ||
                            sys_fs_create_file("/tmp", req_path + 5, req, (uint64_t)n) == 0);
+                }
+            }
+        } else if (job.type == IMG_JOB_WINDOW_ICON) {
+            for (int i = 0; i < g_window_count; i++) {
+                desk_window_t* w = &g_windows[i];
+                if (w->id == job.win_id) {
+                    image_t img;
+                    if (image_decode_file_scaled(job.path, 4, job.max_w, job.max_h, &img) == 0 &&
+                        img.data && img.width > 0 && img.height > 0) {
+                        if (w->icon_data) free(w->icon_data);
+                        w->icon_data = img.data;
+                        w->icon_w = (uint16_t)img.width;
+                        w->icon_h = (uint16_t)img.height;
+                        w->icon_ready = 1;
+                        img.data = 0;
+                        g_desktop_dirty = 1;
+                    }
+                    break;
                 }
             }
         }
