@@ -1,5 +1,8 @@
 #include <fs/vfs.h>
 #include <lib/string.h>
+#include <mm/kmalloc.h>
+
+#define UNION_TEMP_ENTS 16
 
 static int union_mkdir(void* ctx, const char* path, uint16_t mode) {
     vfs_union_ctx_t* u = (vfs_union_ctx_t*)ctx;
@@ -30,19 +33,29 @@ static int union_read_file(void* ctx, const char* path, void* out, size_t out_ca
 static int union_list_dir(void* ctx, const char* path, vfs_dirent_t* out, size_t max_entries, size_t* out_count) {
     vfs_union_ctx_t* u = (vfs_union_ctx_t*)ctx;
 
-    vfs_dirent_t a_ents[64];
+    size_t ent_size = sizeof(vfs_dirent_t) * UNION_TEMP_ENTS;
+    vfs_dirent_t* a_ents = kmalloc(ent_size);
+    vfs_dirent_t* b_ents = kmalloc(ent_size);
+    if (!a_ents || !b_ents) {
+        if (a_ents) kfree(a_ents);
+        if (b_ents) kfree(b_ents);
+        if (out_count) *out_count = 0;
+        return -1;
+    }
+
     size_t a_count = 0;
     int ra = -1;
     if (u->ops_a->list_dir)
-        ra = u->ops_a->list_dir(u->ctx_a, path, a_ents, 64, &a_count);
+        ra = u->ops_a->list_dir(u->ctx_a, path, a_ents, UNION_TEMP_ENTS, &a_count);
 
-    vfs_dirent_t b_ents[64];
     size_t b_count = 0;
     int rb = -1;
     if (u->ops_b->list_dir)
-        rb = u->ops_b->list_dir(u->ctx_b, path, b_ents, 64, &b_count);
+        rb = u->ops_b->list_dir(u->ctx_b, path, b_ents, UNION_TEMP_ENTS, &b_count);
 
     if (ra != 0 && rb != 0) {
+        kfree(a_ents);
+        kfree(b_ents);
         if (out_count) *out_count = 0;
         return -1;
     }
@@ -65,6 +78,9 @@ static int union_list_dir(void* ctx, const char* path, vfs_dirent_t* out, size_t
         if (out) out[total] = b_ents[i];
         total++;
     }
+
+    kfree(a_ents);
+    kfree(b_ents);
 
     if (out_count) *out_count = total;
     return 0;
