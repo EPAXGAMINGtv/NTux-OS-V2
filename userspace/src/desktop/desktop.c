@@ -13,6 +13,7 @@
 #include "cursor.h"
 #include "window_internal.h"
 #include "api.h"
+#include "desktop_internal.h"
 #include "taskbar.h"
 #include "background.h"
 #include "terminal.h"
@@ -3548,7 +3549,12 @@ static void draw_window(desk_window_t* w, int focused) {
         fill_rect(ox + 1, oy + 1 + yy, ow - 2, 1, row);
     }
     draw_round_rect(ox, oy, ow, oh, r, border);
-    draw_text(ox + 8, oy + 7, w->title, th->text_main);
+    int title_x = ox + 8;
+    if (w->icon_ready && w->icon_data) {
+        desktop_draw_icon_pixels(title_x, oy + 4, 14, 14, w->icon_data, (int)w->icon_w, (int)w->icon_h);
+        title_x += 18;
+    }
+    draw_text(title_x, oy + 7, w->title, th->text_main);
     fill_round_rect(ox + ow - 18, oy + 6, 12, 12, 6, 0xFFF95F62u);
     fill_round_rect(ox + ow - 34, oy + 6, 12, 12, 6, 0xFF4EC9FFu);
     fill_round_rect(ox + ow - 50, oy + 6, 12, 12, 6, th->accent);
