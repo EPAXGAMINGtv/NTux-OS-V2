@@ -5,8 +5,9 @@
 
 #define DESK_MAX_WINDOWS 100
 #define DESK_MAX_TITLE 48
-#define DESK_TERM_LINES 30
+#define DESK_TERM_LINES 500
 #define DESK_TERM_COLS 96
+#define DESK_TERM_VIS_MIN 8
 #define DESK_CMD_BUF 4096
 #define DESK_BG_MAX_FILE (24u * 1024u * 1024u)
 #define DESK_LS_MAX 256
@@ -130,7 +131,9 @@ typedef struct {
 typedef struct {
     char lines[DESK_TERM_LINES][DESK_TERM_COLS + 1];
     uint32_t line_colors[DESK_TERM_LINES];
+    int line_head;
     int line_count;
+    int scroll_off;
     char input[256];
     int input_len;
     char cwd[128];

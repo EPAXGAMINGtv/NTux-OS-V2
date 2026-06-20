@@ -4,7 +4,7 @@
 /* NTux TCC runtime layout - search all possible mount points */
 #define CONFIG_TCCDIR "/boot/tcc"
 #define CONFIG_SYSROOT ""
-#define CONFIG_TCC_SYSINCLUDEPATHS "{B}/include:/iso0/boot/tcc/include:/fat0/boot/tcc/include"
+#define CONFIG_TCC_SYSINCLUDEPATHS "/iso0/boot/tcc/include:{B}/include:/fat0/boot/tcc/include"
 #define CONFIG_TCC_LIBPATHS "{B}/lib:/iso0/boot/tcc/lib:/fat0/boot/tcc/lib"
 #define CONFIG_TCC_CRTPREFIX "/boot/tcc/lib:/iso0/boot/tcc/lib:/fat0/boot/tcc/lib"
 #define CONFIG_TCC_ELFINTERP "-"

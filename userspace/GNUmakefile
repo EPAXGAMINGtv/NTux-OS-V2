@@ -669,6 +669,7 @@ $(TCC_INCLUDE_STAMP):
 	cp -r src/tinycc/include/. $(TCC_INC_DIR)/
 	cp -r libc/include/. $(TCC_INC_DIR)/
 	cp -r include/. $(TCC_INC_DIR)/
+	cp src/tinycc/tcclib.h $(TCC_INC_DIR)/tcclib.h
 	@echo "tcc include staged" > $(TCC_INCLUDE_STAMP)
 
 CPPFLAGS_LUA := $(CPPFLAGS) -I src/lua -DLUA_USE_C89 -include stddef.h

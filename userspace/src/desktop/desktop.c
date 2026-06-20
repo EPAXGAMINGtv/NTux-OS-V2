@@ -772,6 +772,9 @@ void desktop_window_cleanup(int idx, int kill_owner) {
         int slot = (int)w->term_slot;
         if (slot >= 0 && slot < DESK_MAX_WINDOWS) {
             memset(&g_term_states[slot], 0, sizeof(g_term_states[slot]));
+            g_term_states[slot].scroll_off = 0;
+            g_term_states[slot].line_head = 0;
+            g_term_states[slot].line_count = 0;
             strncpy(g_term_states[slot].cwd, "/", sizeof(g_term_states[slot].cwd) - 1);
             g_term_states[slot].cwd[sizeof(g_term_states[slot].cwd) - 1] = '\0';
             if (g_term_exec_state == &g_term_states[slot]) g_term_exec_state = 0;
@@ -3577,14 +3580,22 @@ static void draw_window(desk_window_t* w, int focused) {
         int y = ty + 2;
         int max_text_y = term_body_y + term_body_h - 8;
         if (ts) {
-            int start = 0;
             int avail_h = max_text_y - y;
             int vis_lines = avail_h / g_font_line_height;
             if (vis_lines < 1) vis_lines = 1;
-            if (ts->line_count > vis_lines) start = ts->line_count - vis_lines;
+            int total = ts->line_count;
+            /* Clamp scroll offset */
+            int max_off = total - vis_lines;
+            if (max_off < 0) max_off = 0;
+            if (ts->scroll_off > max_off) ts->scroll_off = max_off;
+            if (ts->scroll_off < 0) ts->scroll_off = 0;
+            /* First chronological line index to show */
+            int first = total - vis_lines - ts->scroll_off;
+            if (first < 0) first = 0;
             int draw_y = y;
-            for (int i = start; i < ts->line_count; ++i) {
-                draw_text(tx, draw_y, ts->lines[i], ts->line_colors[i]);
+            for (int i = 0; i < vis_lines && first + i < total; ++i) {
+                int idx = (ts->line_head - total + first + i + DESK_TERM_LINES) % DESK_TERM_LINES;
+                draw_text(tx, draw_y, ts->lines[idx], ts->line_colors[idx]);
                 draw_y += g_font_line_height;
             }
             y = draw_y;
@@ -3608,6 +3619,11 @@ static void draw_window(desk_window_t* w, int focused) {
                 int n = snprintf(time_str, sizeof(time_str), "%02u:%02u:%02u",
                     (unsigned)t.hour, (unsigned)t.minute, (unsigned)t.second);
                 if (n > 0) draw_text_seg(cx, y, time_str, 0xFFFFD166u);
+            }
+            if (ts->scroll_off > 0) {
+                char ind[24];
+                snprintf(ind, sizeof(ind), " [+%d]", ts->scroll_off);
+                draw_text_seg(cx, y, ind, 0xFFFF8888u);
             }
             y += g_font_line_height;
             int input_cx = tx;
@@ -7555,6 +7571,13 @@ static void handle_mouse(void) {
                 if (st->scroll < 0) st->scroll = 0;
                 int max_start = browser_scroll_max(w, st);
                 if (st->scroll > max_start) st->scroll = max_start;
+            }
+        } else if (w->visible && w->terminal) {
+            desk_term_state_t* ts = term_state_for_window(w);
+            if (ts) {
+                int dir = ms.scroll > 0 ? 3 : -3;
+                ts->scroll_off += dir;
+                if (ts->scroll_off < 0) ts->scroll_off = 0;
             }
         }
     }

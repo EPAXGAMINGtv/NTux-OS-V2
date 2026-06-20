@@ -83,20 +83,15 @@ void term_make_prompt(const desk_term_state_t* ts, char* out, size_t cap) {
 
 void term_push_line_state(desk_term_state_t* ts, const char* s, uint32_t color) {
     if (!ts || !s) return;
-    if (ts->line_count < DESK_TERM_LINES) {
-        strncpy(ts->lines[ts->line_count], s, DESK_TERM_COLS);
-        ts->lines[ts->line_count][DESK_TERM_COLS] = '\0';
-        ts->line_colors[ts->line_count] = color;
+    int pos = ts->line_head;
+    strncpy(ts->lines[pos], s, DESK_TERM_COLS);
+    ts->lines[pos][DESK_TERM_COLS] = '\0';
+    ts->line_colors[pos] = color;
+    ts->line_head = (pos + 1) % DESK_TERM_LINES;
+    if (ts->line_count < DESK_TERM_LINES)
         ts->line_count++;
-        return;
-    }
-    for (int i = 1; i < DESK_TERM_LINES; ++i) {
-        memcpy(ts->lines[i - 1], ts->lines[i], DESK_TERM_COLS + 1);
-        ts->line_colors[i - 1] = ts->line_colors[i];
-    }
-    strncpy(ts->lines[DESK_TERM_LINES - 1], s, DESK_TERM_COLS);
-    ts->lines[DESK_TERM_LINES - 1][DESK_TERM_COLS] = '\0';
-    ts->line_colors[DESK_TERM_LINES - 1] = color;
+    /* If user is scrolled back and a new line arrives, keep scroll position
+       relative to the new bottom (unless scrolled to very bottom) */
 }
 
 void term_push_line(const char* s) {
@@ -1387,6 +1382,7 @@ void term_run_command(void) {
     w = &g_windows[g_focus_index];
     desk_term_state_t* ts = term_state_for_window(w);
     if (!ts) return;
+    ts->scroll_off = 0;
     memcpy(line, ts->input, (size_t)ts->input_len);
     line[ts->input_len] = '\0';
     term_run_command_line(w, line);

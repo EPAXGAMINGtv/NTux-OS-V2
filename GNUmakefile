@@ -361,7 +361,7 @@ endif
 		mcopy -o -i $(IMAGE_NAME).hdd@@1M "$$f" "::/boot/modules/$$name" 2>/dev/null || echo "skip: $$name"; \
 	done
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/src/tinycc/examples/ex1.c ::/boot/modules/tcc_example.c
-	@if [ -d userspace/bin/tcc ]; then mcopy -s -i $(IMAGE_NAME).hdd@@1M userspace/bin/tcc ::/boot/tcc; else echo "skip: userspace/bin/tcc (missing)"; fi
+	@if [ -d userspace/bin/tcc ]; then mcopy -s -i $(IMAGE_NAME).hdd@@1M userspace/bin/tcc/. ::/boot/tcc; else echo "skip: userspace/bin/tcc (missing)"; fi
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/src/lua/ntux_tests/autorun.lua ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/src/lua/ntux_tests/hello.lua ::/boot/modules
 	mcopy -i $(IMAGE_NAME).hdd@@1M userspace/src/lua/ntux_tests/fib.lua ::/boot/modules
@@ -458,7 +458,7 @@ create-drives: userspace
 		fi; \
 	done
 	mcopy -i drive_fat32.img userspace/src/tinycc/examples/ex1.c ::/boot/modules/tcc_example.c
-	@if [ -d userspace/bin/tcc ]; then mcopy -s -i drive_fat32.img userspace/bin/tcc ::/boot/tcc; else echo "skip: userspace/bin/tcc (missing)"; fi
+	@if [ -d userspace/bin/tcc ]; then mcopy -s -i drive_fat32.img userspace/bin/tcc/. ::/boot/tcc; else echo "skip: userspace/bin/tcc (missing)"; fi
 	mcopy -i drive_fat32.img userspace/src/lua/ntux_tests/autorun.lua ::/boot/modules/autorun.lua
 	mcopy -i drive_fat32.img userspace/src/lua/ntux_tests/hello.lua ::/boot/modules/hello.lua
 	mcopy -i drive_fat32.img userspace/src/lua/ntux_tests/fib.lua ::/boot/modules/fib.lua

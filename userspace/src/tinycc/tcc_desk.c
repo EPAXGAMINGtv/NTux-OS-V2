@@ -297,22 +297,22 @@ static int compile_headless(const char* src, const char* out_manual) {
     dbg("error_func set");
 
     print_progress(10, "Setting include paths");
-    dbg("tcc_add_include_path(/boot/tcc/include) ...");
-    tcc_add_include_path(s, "/boot/tcc/include");
-    dbg("  OK");
     dbg("tcc_add_include_path(/iso0/boot/tcc/include) ...");
     tcc_add_include_path(s, "/iso0/boot/tcc/include");
+    dbg("  OK");
+    dbg("tcc_add_include_path(/boot/tcc/include) ...");
+    tcc_add_include_path(s, "/boot/tcc/include");
     dbg("  OK");
     dbg("tcc_add_include_path(/fat0/boot/tcc/include) ...");
     tcc_add_include_path(s, "/fat0/boot/tcc/include");
     dbg("  OK");
 
     print_progress(15, "Setting library paths");
-    dbg("tcc_add_library_path(/boot/tcc/lib) ...");
-    tcc_add_library_path(s, "/boot/tcc/lib");
-    dbg("  OK");
     dbg("tcc_add_library_path(/iso0/boot/tcc/lib) ...");
     tcc_add_library_path(s, "/iso0/boot/tcc/lib");
+    dbg("  OK");
+    dbg("tcc_add_library_path(/boot/tcc/lib) ...");
+    tcc_add_library_path(s, "/boot/tcc/lib");
     dbg("  OK");
     dbg("tcc_add_library_path(/fat0/boot/tcc/lib) ...");
     tcc_add_library_path(s, "/fat0/boot/tcc/lib");
@@ -367,12 +367,12 @@ static void do_compile(const char* filename, const char* out_manual) {
     }
     tcc_set_error_func(s, NULL, tcc_error_func);
     
-    // Add include/lib paths - boot first, then iso, then fat (avoids hanging on empty mounts)
-    tcc_add_include_path(s, "/boot/tcc/include");
+    // Add include/lib paths - iso first (where headers live), then boot, then fat
     tcc_add_include_path(s, "/iso0/boot/tcc/include");
+    tcc_add_include_path(s, "/boot/tcc/include");
     tcc_add_include_path(s, "/fat0/boot/tcc/include");
-    tcc_add_library_path(s, "/boot/tcc/lib");
     tcc_add_library_path(s, "/iso0/boot/tcc/lib");
+    tcc_add_library_path(s, "/boot/tcc/lib");
     tcc_add_library_path(s, "/fat0/boot/tcc/lib");
     
     tcc_set_output_type(s, TCC_OUTPUT_EXE);

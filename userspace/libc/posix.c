@@ -85,29 +85,6 @@ int open(const char* path, int flags, ...) {
 }
 
 ssize_t read(int fd, void* buf, size_t count) {
-    if (fd == 0 && buf && count > 0) {
-        size_t got = 0;
-        char *out = (char *)buf;
-        while (got == 0) {
-            if (ntux_console_peek >= 0) {
-                out[got++] = (char)ntux_console_peek;
-                ntux_console_peek = -1;
-                break;
-            }
-            long ch = sys_getchar();
-            if (ch < 0) {
-                sys_yield();
-                continue;
-            }
-            out[got++] = (char)ch;
-        }
-        while (got < count) {
-            long ch = sys_getchar();
-            if (ch < 0) break;
-            out[got++] = (char)ch;
-        }
-        return (ssize_t)got;
-    }
     return (ssize_t)sys_read_fd(fd, buf, (uint64_t)count);
 }
 
