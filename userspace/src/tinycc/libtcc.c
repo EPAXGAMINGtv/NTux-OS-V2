@@ -780,6 +780,12 @@ static int _tcc_open(TCCState *s1, const char *filename)
         fd = 0, filename = "<stdin>";
     else
         fd = open(filename, O_RDONLY | O_BINARY);
+    if (fd < 0) {
+        printf("[TCC-OPEN] FAIL fd=%d file=\"%s\"\n", fd, filename);
+    } else {
+        printf("[TCC-OPEN] OK   fd=%d file=\"%s\"\n", fd, filename);
+    }
+    fflush(stdout);
     if ((s1->verbose == 2 && fd >= 0) || s1->verbose == 3)
         printf("%s %*s%s\n", fd < 0 ? "nf":"->",
                (int)(s1->include_stack_ptr - s1->include_stack), "", filename);
@@ -799,12 +805,8 @@ ST_FUNC int tcc_open(TCCState *s1, const char *filename)
 /* compile the file opened in 'file'. Return non zero if errors. */
 static int tcc_compile(TCCState *s1, int filetype, const char *str, int fd, const char *filename)
 {
-    /* Here we enter the code section where we use the global variables for
-       parsing and code generation (tccpp.c, tccgen.c, <target>-gen.c).
-       Other threads need to wait until we're done.
-
-       Alternatively we could use thread local storage for those global
-       variables, which may or may not have advantages */
+    printf("[TCC-COMPILE] tcc_compile filetype=%d fd=%d filename=\"%s\"\n", filetype, fd, filename ? filename : "(null)");
+    fflush(stdout);
 
     tcc_enter_state(s1);
     s1->error_set_jmp_enabled = 1;
@@ -827,26 +829,53 @@ static int tcc_compile(TCCState *s1, int filetype, const char *str, int fd, cons
             tcc_open_bf(s1, str, 0);
             file->fd = fd;
         }
-
+        printf("[TCC-COMPILE] calling preprocess_start() ...\n");
+        fflush(stdout);
         preprocess_start(s1, filetype);
+        printf("[TCC-COMPILE] preprocess_start() done, calling tccgen_init() ...\n");
+        fflush(stdout);
         tccgen_init(s1);
+        printf("[TCC-COMPILE] tccgen_init() done\n");
+        fflush(stdout);
 
         if (s1->output_type == TCC_OUTPUT_PREPROCESS) {
+            printf("[TCC-COMPILE] calling tcc_preprocess() ...\n");
+            fflush(stdout);
             tcc_preprocess(s1);
+            printf("[TCC-COMPILE] tcc_preprocess() done\n");
+            fflush(stdout);
         } else {
+            printf("[TCC-COMPILE] calling tccelf_begin_file() ...\n");
+            fflush(stdout);
             tccelf_begin_file(s1);
+            printf("[TCC-COMPILE] tccelf_begin_file() done\n");
+            fflush(stdout);
             if (filetype & (AFF_TYPE_ASM | AFF_TYPE_ASMPP)) {
+                printf("[TCC-COMPILE] calling tcc_assemble() ...\n");
+                fflush(stdout);
                 tcc_assemble(s1, !!(filetype & AFF_TYPE_ASMPP));
             } else {
+                printf("[TCC-COMPILE] calling tccgen_compile() ...\n");
+                fflush(stdout);
                 tccgen_compile(s1);
+                printf("[TCC-COMPILE] tccgen_compile() done\n");
+                fflush(stdout);
             }
+            printf("[TCC-COMPILE] calling tccelf_end_file() ...\n");
+            fflush(stdout);
             tccelf_end_file(s1);
+            printf("[TCC-COMPILE] tccelf_end_file() done\n");
+            fflush(stdout);
         }
     }
+    printf("[TCC-COMPILE] compile phase done, calling finalizers ...\n");
+    fflush(stdout);
     tccgen_finish(s1);
     preprocess_end(s1);
     s1->error_set_jmp_enabled = 0;
     tcc_exit_state(s1);
+    printf("[TCC-COMPILE] tcc_compile returning %d (nb_errors=%d)\n", s1->nb_errors != 0 ? -1 : 0, s1->nb_errors);
+    fflush(stdout);
     return s1->nb_errors != 0 ? -1 : 0;
 }
 
@@ -979,6 +1008,9 @@ LIBTCCAPI void tcc_delete(TCCState *s1)
 
 LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
 {
+    printf("[TCC] tcc_set_output_type(%d) nostdinc=%d nostdlib=%d nostdlib_paths=%d\n",
+           output_type, s->nostdinc, s->nostdlib, s->nostdlib_paths);
+    fflush(stdout);
 #ifdef CONFIG_TCC_PIE
     if (output_type == TCC_OUTPUT_EXE)
         output_type |= TCC_OUTPUT_DYN;
@@ -988,6 +1020,8 @@ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
     if (!s->nostdinc) {
         /* default include paths */
         /* -isystem paths have already been handled */
+        printf("[TCC]   adding sysinclude paths from CONFIG_TCC_SYSINCLUDEPATHS\n");
+        fflush(stdout);
         tcc_add_sysinclude_path(s, CONFIG_TCC_SYSINCLUDEPATHS);
     }
 
@@ -997,6 +1031,8 @@ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
     }
 
     /* add sections */
+    printf("[TCC]   calling tccelf_new()\n");
+    fflush(stdout);
     tccelf_new(s);
 
     if (output_type == TCC_OUTPUT_OBJ) {
@@ -1005,8 +1041,11 @@ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
         return 0;
     }
 
-    if (!s->nostdlib_paths)
+    if (!s->nostdlib_paths) {
+        printf("[TCC]   adding library paths from CONFIG_TCC_LIBPATHS\n");
+        fflush(stdout);
         tcc_add_library_path(s, CONFIG_TCC_LIBPATHS);
+    }
 
 #ifdef TCC_TARGET_PE
 # ifdef TCC_IS_NATIVE
@@ -1019,9 +1058,22 @@ LIBTCCAPI int tcc_set_output_type(TCCState *s, int output_type)
 # endif
 #else
     /* paths for crt objects */
+    printf("[TCC]   splitting CRTPREFIX: \"%s\"\n", CONFIG_TCC_CRTPREFIX);
+    fflush(stdout);
     tcc_split_path(s, &s->crt_paths, &s->nb_crt_paths, CONFIG_TCC_CRTPREFIX);
-    if (output_type != TCC_OUTPUT_MEMORY && !s->nostdlib)
+    for (int i = 0; i < s->nb_crt_paths; i++)
+        printf("[TCC]   crt_path[%d] = \"%s\"\n", i, s->crt_paths[i]);
+    fflush(stdout);
+    if (output_type != TCC_OUTPUT_MEMORY && !s->nostdlib) {
+        printf("[TCC]   calling tccelf_add_crtbegin() ...\n");
+        fflush(stdout);
         tccelf_add_crtbegin(s);
+        printf("[TCC]   tccelf_add_crtbegin() done\n");
+        fflush(stdout);
+    } else {
+        printf("[TCC]   SKIPPING tccelf_add_crtbegin (output_type=%d nostdlib=%d)\n", output_type, s->nostdlib);
+        fflush(stdout);
+    }
 #endif
     return 0;
 }
@@ -1257,8 +1309,13 @@ ST_FUNC int tcc_add_file_internal(TCCState *s1, const char *filename, int flags)
     if (flags & AFF_TYPE_BIN)
         return tcc_add_binary(s1, flags, filename, fd);
 
+    printf("[TCC-ADD] adding \"%s\" for compilation (filetype=%d)\n", filename, flags & AFF_TYPE_MASK);
+    fflush(stdout);
     dynarray_add(&s1->target_deps, &s1->nb_target_deps, tcc_strdup(filename));
-    return tcc_compile(s1, flags, filename, fd, NULL);
+    int ret = tcc_compile(s1, flags, filename, fd, NULL);
+    printf("[TCC-ADD] compile done, ret=%d\n", ret);
+    fflush(stdout);
+    return ret;
 }
 
 LIBTCCAPI int tcc_add_file(TCCState *s, const char *filename)
@@ -1274,7 +1331,11 @@ static int tcc_add_library_internal(TCCState *s1, const char *fmt,
 
     for(i = 0; i < nb_paths; i++) {
         snprintf(buf, sizeof(buf), fmt, paths[i], filename);
+        printf("[TCC-LIB] trying \"%s\" ...\n", buf);
+        fflush(stdout);
         ret = tcc_add_file_internal(s1, buf, flags & ~AFF_PRINT_ERROR);
+        printf("[TCC-LIB]   ret=%d\n", ret);
+        fflush(stdout);
         if (ret != FILE_NOT_FOUND)
             return ret;
     }
@@ -1303,8 +1364,16 @@ ST_FUNC int tcc_add_support(TCCState *s1, const char *filename)
 #ifdef TCC_TARGET_UNIX
 ST_FUNC int tcc_add_crt(TCCState *s1, const char *filename)
 {
-    return tcc_add_library_internal(s1, "%s/%s",
+    printf("[TCC-CRT] tcc_add_crt(\"%s\") nb_crt_paths=%d\n", filename, s1->nb_crt_paths);
+    fflush(stdout);
+    for (int i = 0; i < s1->nb_crt_paths; i++)
+        printf("[TCC-CRT]   crt_path[%d] = \"%s\"\n", i, s1->crt_paths[i]);
+    fflush(stdout);
+    int ret = tcc_add_library_internal(s1, "%s/%s",
         filename, AFF_PRINT_ERROR, s1->crt_paths, s1->nb_crt_paths);
+    printf("[TCC-CRT] tcc_add_crt ret=%d\n", ret);
+    fflush(stdout);
+    return ret;
 }
 #endif
 

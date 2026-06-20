@@ -1,5 +1,27 @@
 #include <syscall.h>
 #include <window.h>
+#include <stdio.h>
+#include <stdarg.h>
+
+/* ----- DEBUG helpers ----- */
+static uint64_t g_dbgt0 = 0;
+static void dbg_init(void) {
+    g_dbgt0 = sys_get_ticks();
+}
+static uint64_t dbg_tick(void) {
+    return sys_get_ticks() - g_dbgt0;
+}
+static void dbg(const char* fmt, ...) {
+    uint64_t t = dbg_tick();
+    printf("[TCC+%llu] ", (unsigned long long)t);
+    va_list ap;
+    va_start(ap, fmt);
+    vprintf(fmt, ap);
+    va_end(ap);
+    printf("\n");
+    fflush(stdout);
+}
+/* ------------------------ */
 
 #ifndef ONE_SOURCE
 # define ONE_SOURCE 1
@@ -12,6 +34,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <args.h>
+#include <stdarg.h>
 
 char **environ = 0;
 
@@ -151,6 +175,190 @@ static void tcc_error_func(void *opaque, const char *msg) {
     redraw();
 }
 
+static void print_progress(int percent, const char* stage) {
+    char bar[22];
+    int n = percent * 20 / 100;
+    for (int i = 0; i < 20; i++)
+        bar[i] = (i < n) ? '#' : (i == n && n < 20) ? '>' : ' ';
+    bar[20] = 0;
+    printf("[TCC] [%s] %d%% - %s\n", bar, percent, stage);
+    fflush(stdout);
+}
+
+static void tcc_error_func_headless(void *opaque, const char *msg) {
+    (void)opaque;
+    printf("[TCC] Error: %s\n", msg);
+}
+
+static int resolve_path(const char* cwd, const char* in, char* out, size_t cap) {
+    if (!cwd || !in || !out || cap < 2) return -1;
+    char temp[256];
+    if (in[0] == '/') {
+        strncpy(temp, in, sizeof(temp) - 1);
+        temp[sizeof(temp) - 1] = 0;
+    } else {
+        size_t clen = strlen(cwd);
+        if (clen == 0 || cwd[0] != '/' || clen >= sizeof(temp) - 2) return -1;
+        memcpy(temp, cwd, clen);
+        size_t tlen = clen;
+        if (tlen > 1 && temp[tlen - 1] == '/') tlen--;
+        temp[tlen++] = '/';
+        strncpy(temp + tlen, in, sizeof(temp) - tlen - 1);
+        temp[sizeof(temp) - 1] = 0;
+    }
+    out[0] = '/';
+    out[1] = 0;
+    char* src = temp;
+    while (*src) {
+        while (*src == '/') src++;
+        if (!*src) break;
+        char seg[64];
+        size_t sl = 0;
+        while (src[sl] && src[sl] != '/' && sl + 1 < sizeof(seg)) {
+            seg[sl] = src[sl];
+            sl++;
+        }
+        seg[sl] = 0;
+        src += sl;
+        if (strcmp(seg, ".") == 0) continue;
+        if (strcmp(seg, "..") == 0) {
+            size_t ol = strlen(out);
+            if (ol > 1) {
+                size_t j = ol - 1;
+                while (j > 0 && out[j] != '/') j--;
+                out[j == 0 ? 1 : j] = 0;
+            }
+            continue;
+        }
+        size_t ol = strlen(out);
+        if (ol > 1) {
+            if (ol + 1 >= cap) return -1;
+            out[ol++] = '/';
+            out[ol] = 0;
+        }
+        if (ol + sl >= cap) return -1;
+        memcpy(out + ol, seg, sl + 1);
+    }
+    return 0;
+}
+
+static void read_cwd(char* buf, size_t cap) {
+    buf[0] = 0;
+    uint64_t len = 0;
+    sys_fs_read_file("/tmp/run.cwd", buf, cap, &len);
+    if (len > 0 && len < cap && buf[len - 1] == '\n') buf[len - 1] = 0;
+    if (buf[0] != '/') strcpy(buf, "/");
+}
+
+static int compile_headless(const char* src, const char* out_manual) {
+    dbg_init();
+
+    dbg("=== compile_headless START src=\"%s\" out_manual=\"%s\" ===", src, out_manual ? out_manual : "(null)");
+
+    char cwd[256];
+    read_cwd(cwd, sizeof(cwd));
+    dbg("CWD read: \"%s\"", cwd);
+
+    char src_path[256];
+    if (resolve_path(cwd, src, src_path, sizeof(src_path)) != 0) {
+        printf("[TCC] Invalid source path: %s\n", src);
+        return -1;
+    }
+    dbg("src_path resolved: \"%s\"", src_path);
+
+    char out_name[256];
+    if (out_manual && out_manual[0]) {
+        if (resolve_path(cwd, out_manual, out_name, sizeof(out_name)) != 0) {
+            printf("[TCC] Invalid output path: %s\n", out_manual);
+            return -1;
+        }
+        dbg("out_name (manual): \"%s\"", out_name);
+    } else {
+        strncpy(out_name, src_path, sizeof(out_name) - 5);
+        char *dot = strrchr(out_name, '.');
+        if (dot) *dot = 0;
+        strcat(out_name, ".elf");
+        dbg("out_name (auto): \"%s\"", out_name);
+    }
+
+    printf("[TCC] Compiling %s -> %s\n", src_path, out_name);
+
+    print_progress(0, "Initializing");
+
+    dbg("Calling tcc_new()...");
+    TCCState *s = tcc_new();
+    if (!s) {
+        printf("[TCC] Failed to create state\n");
+        return -1;
+    }
+    dbg("tcc_new() OK, state=%p", (void*)s);
+
+    tcc_set_error_func(s, NULL, tcc_error_func_headless);
+    dbg("error_func set");
+
+    print_progress(10, "Setting include paths");
+    dbg("tcc_add_include_path(/boot/tcc/include) ...");
+    tcc_add_include_path(s, "/boot/tcc/include");
+    dbg("  OK");
+    dbg("tcc_add_include_path(/iso0/boot/tcc/include) ...");
+    tcc_add_include_path(s, "/iso0/boot/tcc/include");
+    dbg("  OK");
+    dbg("tcc_add_include_path(/fat0/boot/tcc/include) ...");
+    tcc_add_include_path(s, "/fat0/boot/tcc/include");
+    dbg("  OK");
+
+    print_progress(15, "Setting library paths");
+    dbg("tcc_add_library_path(/boot/tcc/lib) ...");
+    tcc_add_library_path(s, "/boot/tcc/lib");
+    dbg("  OK");
+    dbg("tcc_add_library_path(/iso0/boot/tcc/lib) ...");
+    tcc_add_library_path(s, "/iso0/boot/tcc/lib");
+    dbg("  OK");
+    dbg("tcc_add_library_path(/fat0/boot/tcc/lib) ...");
+    tcc_add_library_path(s, "/fat0/boot/tcc/lib");
+    dbg("  OK");
+
+    print_progress(20, "Configuring output type");
+    dbg("Set s->nostdlib = 1, calling tcc_set_output_type(TCC_OUTPUT_EXE)...");
+    sys_yield();
+    s->nostdlib = 1;
+    dbg("  calling tcc_set_output_type...");
+    tcc_set_output_type(s, TCC_OUTPUT_EXE);
+    dbg("  tcc_set_output_type OK");
+
+    print_progress(25, "Loading source");
+    dbg("=== tcc_add_file(src_path=\"%s\") CALL ===", src_path);
+    sys_yield();
+    int add_ret = tcc_add_file(s, src_path);
+    dbg("=== tcc_add_file RETURNED ret=%d ===", add_ret);
+    if (add_ret < 0) {
+        printf("[TCC] Could not add file: %s\n", src_path);
+        tcc_delete(s);
+        return -1;
+    }
+
+    print_progress(40, "Configuring libraries");
+    dbg("tcc_add_library(s, \"c\") ...");
+    tcc_add_library(s, "c");
+    dbg("  OK");
+
+    print_progress(55, "Compiling");
+    dbg("tcc_output_file(out_name=\"%s\") ...", out_name);
+    int out_ret = tcc_output_file(s, out_name);
+    dbg("tcc_output_file returned %d", out_ret);
+    if (out_ret < 0) {
+        printf("[TCC] Compilation FAILED\n");
+        tcc_delete(s);
+        return -1;
+    }
+
+    print_progress(100, "Done");
+    dbg("tcc_delete() ...");
+    tcc_delete(s);
+    dbg("=== compile_headless DONE ===");
+    return 0;
+}
+
 static void do_compile(const char* filename, const char* out_manual) {
     TCCState *s = tcc_new();
     if (!s) {
@@ -159,13 +367,13 @@ static void do_compile(const char* filename, const char* out_manual) {
     }
     tcc_set_error_func(s, NULL, tcc_error_func);
     
-    // Add include/lib paths for all possible mount points
+    // Add include/lib paths - boot first, then iso, then fat (avoids hanging on empty mounts)
+    tcc_add_include_path(s, "/boot/tcc/include");
     tcc_add_include_path(s, "/iso0/boot/tcc/include");
     tcc_add_include_path(s, "/fat0/boot/tcc/include");
-    tcc_add_include_path(s, "/boot/tcc/include");
+    tcc_add_library_path(s, "/boot/tcc/lib");
     tcc_add_library_path(s, "/iso0/boot/tcc/lib");
     tcc_add_library_path(s, "/fat0/boot/tcc/lib");
-    tcc_add_library_path(s, "/boot/tcc/lib");
     
     tcc_set_output_type(s, TCC_OUTPUT_EXE);
     
@@ -260,6 +468,13 @@ static void handle_command(char* cmd) {
 }
 
 void ntux_user_entry(void) {
+    // Check for headless compilation mode: run tcc.elf <source.c> [output.elf]
+    int ac = ntux_argc();
+    if (ac >= 2) {
+        int ret = compile_headless(ntux_arg(1), (ac >= 3) ? ntux_arg(2) : NULL);
+        sys_exit(ret);
+    }
+
     if (window_init() != 0) sys_exit(1);
     
     if (window_create(g_win_id, 100, 100, 800, 480, 0x1E1E1E, "TCC Desktop Console") != 0) {

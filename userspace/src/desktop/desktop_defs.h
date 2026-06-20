@@ -134,6 +134,7 @@ typedef struct {
     char input[256];
     int input_len;
     char cwd[128];
+    int child_tid;
 } desk_term_state_t;
 
 typedef struct {

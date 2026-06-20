@@ -1410,6 +1410,8 @@ static int parse_include(TCCState *s1, int do_next, int test)
             pstrcat(buf, sizeof buf, "/");
         }
         pstrcat(buf, sizeof buf, name);
+        printf("[TCC-INCLUDE] trying: %s\n", buf);
+        fflush(stdout);
         e = search_cached_include(s1, buf, 0);
         if (e && (define_find(e->ifndef_macro) || e->once)) {
             /* no need to parse the include because the 'ifndef macro'
@@ -1422,7 +1424,12 @@ static int parse_include(TCCState *s1, int do_next, int test)
                    (int)(s1->include_stack_ptr - s1->include_stack), "", buf);
             return 1;
         }
-        if (tcc_open(s1, buf) >= 0)
+        printf("[TCC-INCLUDE] calling tcc_open(\"%s\") ...\n", buf);
+        fflush(stdout);
+        int tcc_open_ret = tcc_open(s1, buf);
+        printf("[TCC-INCLUDE] tcc_open returned %d\n", tcc_open_ret);
+        fflush(stdout);
+        if (tcc_open_ret >= 0)
             break;
     }
 

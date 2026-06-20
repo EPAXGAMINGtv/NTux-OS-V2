@@ -1745,6 +1745,8 @@ static void tcc_tcov_add_file(TCCState *s1, const char *filename)
 /* add libc crt1/crti objects */
 ST_FUNC void tccelf_add_crtbegin(TCCState *s1)
 {
+    printf("[TCC-CRT] tccelf_add_crtbegin output_type=%d nostdlib=%d\n", s1->output_type, s1->nostdlib);
+    fflush(stdout);
 #if TARGETOS_OpenBSD
     if (s1->output_type != TCC_OUTPUT_DLL)
         tcc_add_crt(s1, "crt0.o");
@@ -1780,6 +1782,8 @@ ST_FUNC void tccelf_add_crtbegin(TCCState *s1)
 
 ST_FUNC void tccelf_add_crtend(TCCState *s1)
 {
+    printf("[TCC-CRT] tccelf_add_crtend\n");
+    fflush(stdout);
 #if TARGETOS_OpenBSD
     if (s1->output_type == TCC_OUTPUT_DLL)
         tcc_add_crt(s1, "crtendS.o");
@@ -3125,18 +3129,24 @@ LIBTCCAPI int elf_output_obj(TCCState *s1, const char *filename)
 
 LIBTCCAPI int tcc_output_file(TCCState *s, const char *filename)
 {
+    printf("[TCC-OUTPUT] tcc_output_file(\"%s\") output_type=%d\n", filename, s->output_type);
+    fflush(stdout);
     s->nb_errors = 0;
     if (s->test_coverage)
         tcc_tcov_add_file(s, filename);
+    int ret;
     if (s->output_type == TCC_OUTPUT_OBJ)
-        return elf_output_obj(s, filename);
+        ret = elf_output_obj(s, filename);
 #ifdef TCC_TARGET_PE
-    return  pe_output_file(s, filename);
+    else ret = pe_output_file(s, filename);
 #elif defined TCC_TARGET_MACHO
-    return macho_output_file(s, filename);
+    else ret = macho_output_file(s, filename);
 #else
-    return elf_output_file(s, filename);
+    else ret = elf_output_file(s, filename);
 #endif
+    printf("[TCC-OUTPUT] tcc_output_file returning %d\n", ret);
+    fflush(stdout);
+    return ret;
 }
 
 ST_FUNC ssize_t full_read(int fd, void *buf, size_t count) {

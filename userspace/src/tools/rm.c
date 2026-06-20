@@ -30,7 +30,7 @@ static int remove_tree(const char* path) {
 }
 
 void ntux_user_entry(void) {
-    const char* path = ntux_arg(0);
+    const char* path = ntux_arg(1);
     if (!path) {
         puts("usage: rm <path>");
         sys_exit(2);

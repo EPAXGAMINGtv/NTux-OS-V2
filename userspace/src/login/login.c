@@ -577,12 +577,10 @@ static void draw_cursor(void) {
         0x0070, 0x00E0, 0x00E0, 0x0000
     };
     uint32_t c = glow ? 0xFFEAF4FFu : 0xFFF2F2F2u;
-    uint32_t s = 0xFF121212u;
     for (int row = 0; row < 16; ++row) {
         uint16_t bits = arrow_mask[row];
         for (int col = 0; col < 16; ++col) {
             if (bits & (1u << col)) {
-                put_px(x + col + 1, y + row + 1, s);
                 put_px(x + col, y + row, c);
             }
         }

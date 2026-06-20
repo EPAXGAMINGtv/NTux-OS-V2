@@ -138,6 +138,7 @@ static uint8_t g_hotkey_f4_last = 0;
 static uint8_t g_hotkey_f11_last = 0;
 static uint8_t g_hotkey_tab_last = 0;
 static uint8_t g_hotkey_w_last = 0;
+static uint8_t g_hotkey_c_last = 0;
 static uint64_t g_close_event_id = 0;
 static uint64_t g_close_event_tick = 0;
 static uint8_t g_alt_tab_active = 0;
@@ -533,6 +534,7 @@ static int start_menu_content_height(void);
 static int start_menu_item_y_by_visible(int sel);
 
 int desktop_wants_console_input(void) {
+    if (g_term_passthrough) return 0;
     if (g_namebox_active) return 1;
     if (g_start_open) return 1;
     if (g_focus_index < 0 || g_focus_index >= g_window_count) return 0;
@@ -6716,7 +6718,7 @@ static int browser_copy_file(const char* src, const char* dst) {
     if (sys_fs_read_file(src, 0, 0, &len) != 0) return -1;
     if (len == 0) {
         char parent[256];
-        char name[96];
+        char name[256];
         if (split_parent_name(dst, parent, name, sizeof(parent)) == 0) {
             return sys_fs_create_file(parent, name, "", 0) == 0 ? 0 : -1;
         }
@@ -6732,7 +6734,7 @@ static int browser_copy_file(const char* src, const char* dst) {
     long rc = sys_fs_write_file(dst, buf, len);
     if (rc != 0) {
         char parent[256];
-        char name[96];
+        char name[256];
         if (split_parent_name(dst, parent, name, sizeof(parent)) == 0) {
             rc = sys_fs_create_file(parent, name, buf, len);
         }
@@ -6747,7 +6749,7 @@ static int browser_copy_tree(const char* src, const char* dst) {
     if (sys_fs_list_dir(src, ents, DESK_LS_MAX, &count) != 0) return -1;
     if (sys_fs_exists(dst) <= 0) {
         char parent[256];
-        char name[96];
+        char name[256];
         if (split_parent_name(dst, parent, name, sizeof(parent)) != 0) return -1;
         if (sys_fs_mkdir(parent, name) != 0) return -1;
     }
@@ -7707,8 +7709,23 @@ static void handle_super_key(void) {
 
 static void handle_terminal_input(void) {
     desk_term_state_t* ts;
+    if (g_term_passthrough) {
+        if (g_focus_index >= 0 && g_focus_index < g_window_count && g_windows[g_focus_index].terminal) {
+            ts = term_state_for_window(&g_windows[g_focus_index]);
+            if (ts && ts->child_tid >= 1 && !desktop_task_is_alive(ts->child_tid)) {
+                ts->child_tid = 0;
+                g_term_passthrough = 0;
+                g_term_exec_state = 0;
+                term_push_line_state(ts, "[done] process exited", 0x88FF88);
+                char prompt[132];
+                snprintf(prompt, sizeof(prompt), "%s> ", ts->cwd);
+                term_push_line_state(ts, prompt, 0x00FF00);
+                g_desktop_dirty = 1;
+            }
+        }
+        return;
+    }
     if (g_namebox_active) return;
-    if (g_term_passthrough) return;
     if (g_start_open) return;
     if (g_focus_index < 0 || g_focus_index >= g_window_count) return;
     if (!g_windows[g_focus_index].terminal) return;
@@ -7788,6 +7805,26 @@ static void handle_global_hotkeys(void) {
     }
     if (ctrl && g_focus_index >= 0 && g_focus_index < g_window_count && g_windows[g_focus_index].file_browser) {
         desk_browser_state_t* st = window_browser_state(&g_windows[g_focus_index]);
+    }
+    if (ctrl && !alt) {
+        int cnow = (sys_kbd_is_pressed(0x2E) > 0) ? 1 : 0;
+        if (cnow && !g_hotkey_c_last) {
+            if (g_focus_index >= 0 && g_focus_index < g_window_count && g_windows[g_focus_index].terminal) {
+                desk_term_state_t* ts = term_state_for_window(&g_windows[g_focus_index]);
+                if (ts && ts->child_tid >= 1) {
+                    sys_task_kill(ts->child_tid);
+                    ts->child_tid = 0;
+                    g_term_passthrough = 0;
+                    g_term_exec_state = 0;
+                    term_push_line_state(ts, "[killed] process terminated", 0xFF8888);
+                    char prompt[132];
+                    snprintf(prompt, sizeof(prompt), "%s> ", ts->cwd);
+                    term_push_line_state(ts, prompt, 0x00FF00);
+                    g_desktop_dirty = 1;
+                }
+            }
+        }
+        g_hotkey_c_last = (uint8_t)cnow;
     }
     if (g_msgbox_active) {
         g_hotkey_f4_last = (uint8_t)f4_now;
@@ -8596,7 +8633,6 @@ static void draw_cursor(void) {
         fill_rect(x + 5, y + 3, 2, 8, 0xFFFFFFFFu);
         fill_rect(x + 7, y + 5, 2, 6, 0xFFFFFFFFu);
         fill_rect(x + 1, y + 7, 10, 3, glow ? 0xFFEAF4FFu : 0xFFFFFFFFu);
-        draw_rect(x, y, 12, 12, 0xFF000000u);
         return;
     }
     if (kind == CURSOR_MOVE) {
@@ -8612,7 +8648,7 @@ static void draw_cursor(void) {
         put_px(x + 7, y + 10, glow ? 0xFFEAF4FFu : 0xFFFFFFFFu);
         return;
     }
-    // Windows-like arrow cursor with subtle shadow.
+    // Windows-like arrow cursor.
     static const uint16_t arrow_mask[16] = {
         0x0001, 0x0003, 0x0007, 0x000F,
         0x001F, 0x003F, 0x007F, 0x00FF,
@@ -8620,12 +8656,10 @@ static void draw_cursor(void) {
         0x0070, 0x00E0, 0x00E0, 0x0000
     };
     uint32_t c = 0xFFF2F2F2u;
-    uint32_t s = 0xFF121212u;
     for (int row = 0; row < 16; ++row) {
         uint16_t bits = arrow_mask[row];
         for (int col = 0; col < 16; ++col) {
             if (bits & (1u << col)) {
-                put_px(x + col + 1, y + row + 1, s);
                 put_px(x + col, y + row, c);
             }
         }

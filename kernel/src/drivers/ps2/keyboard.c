@@ -24,13 +24,6 @@ static uint8_t key_down[128];
 static uint8_t key_press_event[128];
 static volatile uint64_t g_keyboard_irq_hits = 0;
 
-static void kb_put_seq(const char* s) {
-    if (!s) return;
-    while (*s) {
-        rb_put(&kb_buffer, *s++);
-    }
-}
-
 static void ps2_wait_input_clear(void) {
     for (int i = 0; i < 100000; ++i) {
         if ((inb(0x64) & 0x02) == 0) return;
@@ -84,21 +77,6 @@ static void keyboard_apply_scancode(uint8_t key, bool released, bool extended) {
     if (extended) {
         if (key == 0x1D) ctrl_pressed = !released;
         if (key == 0x38) alt_pressed = !released;
-        if (!released) {
-            switch (key) {
-                case 0x48: kb_put_seq("\x1b[A"); return; /* Up */
-                case 0x50: kb_put_seq("\x1b[B"); return; /* Down */
-                case 0x4D: kb_put_seq("\x1b[C"); return; /* Right */
-                case 0x4B: kb_put_seq("\x1b[D"); return; /* Left */
-                case 0x47: kb_put_seq("\x1b[H"); return; /* Home */
-                case 0x4F: kb_put_seq("\x1b[F"); return; /* End */
-                case 0x49: kb_put_seq("\x1b[5~"); return; /* Page Up */
-                case 0x51: kb_put_seq("\x1b[6~"); return; /* Page Down */
-                case 0x52: kb_put_seq("\x1b[2~"); return; /* Insert */
-                case 0x53: kb_put_seq("\x1b[3~"); return; /* Delete */
-                default: break;
-            }
-        }
         return;
     }
 
@@ -201,6 +179,10 @@ void keyboard_init() {
     } else {
         kprint_error("[KBD] PS/2 keyboard scanning enable failed\n");
     }
+
+    /* Set typematic rate: 500ms delay, ~10.9 chars/sec */
+    ps2_write_device(1, 0xF3);
+    ps2_write_device(1, 0x2B);
 
     irq_register_handler(1, keyboard_irq_handler);
     pic_clear_mask(1);

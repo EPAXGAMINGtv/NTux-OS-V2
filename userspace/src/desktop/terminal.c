@@ -1003,6 +1003,9 @@ void term_run_command_line(desk_window_t* tw, const char* line_in) {
             g_term_exec_state = 0;
             return;
         }
+        if (sys_fs_write_file("/tmp/run.cwd", ts->cwd, (uint64_t)strlen(ts->cwd)) != 0) {
+            (void)sys_fs_create_file("/tmp", "run.cwd", ts->cwd, (uint64_t)strlen(ts->cwd));
+        }
         if (argc > 2) {
             (void)term_write_args_file("/tmp/run.args", argv, 2, argc);
             if (sys_fs_write_file("/tmp/run.path", path, (uint64_t)strlen(path)) != 0) {
@@ -1011,13 +1014,16 @@ void term_run_command_line(desk_window_t* tw, const char* line_in) {
         }
         long tid = desktop_launch_target_tid(path);
         if (tid >= 0) {
-            term_write_args_for_tid((int)tid, path, argv, 2, argc);
+            term_write_args_for_tid((int)tid, argv[1], argv, 2, argc);
             if (term_idx >= 0) term_route_register((int)tid, term_idx);
-            term_push_line("[ok] task started");
+            ts->child_tid = (int)tid;
+            g_term_passthrough = 1;
+            sys_console_release();
+            term_push_line_color("[ok] task started, waiting for exit...", 0x88FF88);
         } else {
             term_push_line("[err] task start failed");
+            g_term_exec_state = 0;
         }
-        g_term_exec_state = 0;
         return;
     }
     if (strcmp(argv[0], "run") == 0) {

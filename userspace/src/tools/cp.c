@@ -78,8 +78,8 @@ static int copy_tree(const char* src, const char* dst) {
 }
 
 void ntux_user_entry(void) {
-    const char* src = ntux_arg(0);
-    const char* dst = ntux_arg(1);
+    const char* src = ntux_arg(1);
+    const char* dst = ntux_arg(2);
     if (!src || !dst) {
         puts("usage: cp <src> <dst>");
         sys_exit(2);

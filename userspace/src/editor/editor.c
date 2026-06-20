@@ -306,7 +306,7 @@ void ntux_user_entry(void) {
         if (focused) {
             uint64_t now = sys_get_ticks();
             long ch = sys_getchar();
-            if (now - g_last_text_tick >= 2u) {
+            if (now - g_last_text_tick >= 12u) {
                 if (ch >= 32 && ch < 127 && !ctrl) {
                     insert_char((char)ch);
                     g_last_text_tick = now;
