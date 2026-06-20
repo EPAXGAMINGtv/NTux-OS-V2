@@ -810,7 +810,13 @@ void term_run_command_line(desk_window_t* tw, const char* line_in) {
         return;
     }
     if (strcmp(argv[0], "rm") == 0) {
-        term_cmd_rm(ts->cwd, argc > 1 ? argv[1] : 0);
+        if (argc < 2) {
+            term_push_line("usage: rm <path> [path...]");
+        } else {
+            for (int i = 1; i < argc; ++i) {
+                term_cmd_rm(ts->cwd, argv[i]);
+            }
+        }
         g_term_exec_state = 0;
         return;
     }
@@ -918,6 +924,7 @@ void term_run_command_line(desk_window_t* tw, const char* line_in) {
         long tid = sys_task_add_module("partutil");
         if (tid < 0) tid = desktop_launch_target_tid("/boot/modules/partutil.elf");
         if (tid >= 0) {
+            term_write_args_for_tid((int)tid, "partutil", argv, 1, argc);
             if (term_idx >= 0) term_route_register((int)tid, term_idx);
             term_push_line("[partutil] partition utility started");
         } else {

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <args.h>
 
 #define CONSOLE_W 100
 #define CONSOLE_H 30
@@ -237,7 +238,36 @@ static void handle_command(char* cmd) {
     }
 }
 
+static void headless_run_script(lua_State *L, const char *path) {
+    if (luaL_dofile(L, path) != LUA_OK) {
+        const char *msg = lua_tostring(L, -1);
+        printf("[lua] %s\n", msg ? msg : "(unknown error)");
+        lua_pop(L, 1);
+    }
+}
+
 void ntux_user_entry(void) {
+    int ac = ntux_argc();
+    const char *script = (ac >= 2) ? ntux_arg(1) : 0;
+    if (script && script[0] && sys_fs_exists(script) == 1) {
+        lua_State *L = luaL_newstate();
+        if (!L) {
+            printf("[lua] failed to create state\n");
+            sys_exit(1);
+        }
+        luaL_openlibs(L);
+        lua_newtable(L);
+        for (int i = 0; i < ac; ++i) {
+            const char *a = ntux_arg(i);
+            lua_pushstring(L, a ? a : "");
+            lua_rawseti(L, -2, i);
+        }
+        lua_setglobal(L, "arg");
+        headless_run_script(L, script);
+        lua_close(L);
+        sys_exit(0);
+    }
+
     if (window_init() != 0) sys_exit(1);
     
     if (window_create(g_win_id, 150, 150, 800, 480, 0x0C121B, "Lua Desktop Console") != 0) {
