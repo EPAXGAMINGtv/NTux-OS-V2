@@ -3,6 +3,7 @@
 #include <syscall.h>
 #include <window.h>
 #include <stdio.h>
+#include <args.h>
 
 #define TEST_W 540
 #define TEST_H 360
@@ -31,10 +32,15 @@ static int btn_hit(int mx, int my, const test_btn_t* b) {
     return (mx >= b->x && mx < b->x + b->w && my >= b->y && my < b->y + b->h);
 }
 
-static void draw_ui(window_t win, int hover_idx, const char* status) {
+static void draw_ui(window_t win, int hover_idx, const char* status, const char* args_str) {
     window_clear(win, 0xFF0B121Bu);
     window_draw_text(win, 18, 16, 0xFFEAF4FFu, "Desktop API Test");
-    window_draw_text(win, 18, 34, 0xFF9FC2DDu, "Click buttons to test desktop features.");
+    if (args_str && args_str[0]) {
+        window_draw_text(win, 18, 34, 0xFF8AE68Au, "args:");
+        window_draw_text(win, 64, 34, 0xFF8AE68Au, args_str);
+    } else {
+        window_draw_text(win, 18, 34, 0xFF9FC2DDu, "Click buttons to test desktop features.");
+    }
 
     for (int i = 0; i < (int)(sizeof(g_btns) / sizeof(g_btns[0])); ++i) {
         uint32_t bg = (i == hover_idx) ? 0xFF2BC6FFu : 0xFF1D78C9u;
@@ -62,6 +68,22 @@ void ntux_user_entry(void) {
     }
     window_show(win, 1);
     window_focus(win);
+
+    char args_str[256];
+    args_str[0] = '\0';
+    {
+        int ac = ntux_argc();
+        size_t pos = 0;
+        for (int i = 0; i < ac && pos < sizeof(args_str) - 1; ++i) {
+            const char* a = ntux_arg(i);
+            size_t l = strlen(a);
+            if (pos + l + 2 > sizeof(args_str)) break;
+            if (i > 0) args_str[pos++] = ' ';
+            memcpy(args_str + pos, a, l);
+            pos += l;
+        }
+        args_str[pos] = '\0';
+    }
 
     int last_left = 0;
     char status[160];
@@ -139,7 +161,7 @@ void ntux_user_entry(void) {
             last_notify_tick = now;
         }
 
-        draw_ui(win, hover, status);
+        draw_ui(win, hover, status, args_str);
         last_left = st.mouse_left;
         sys_wait_ticks(1);
     }

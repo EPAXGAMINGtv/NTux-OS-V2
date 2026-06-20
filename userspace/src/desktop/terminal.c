@@ -931,6 +931,7 @@ void term_run_command_line(desk_window_t* tw, const char* line_in) {
         long tid = sys_task_add_module("test");
         if (tid < 0) tid = desktop_launch_target_tid("/boot/modules/test.elf");
         if (tid >= 0) {
+            term_write_args_for_tid((int)tid, "test", argv, 1, argc);
             if (term_idx >= 0) term_route_register((int)tid, term_idx);
             term_push_line("[test] test started");
         } else {
