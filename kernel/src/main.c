@@ -22,10 +22,8 @@
 #include <drivers/sata/ata.h>
 #include <drivers/audio/intel_hda.h>
 #include <drivers/nvme/nvme.h>
-#include <drivers/sdmmc/sdmmc.h>
 
 #include <sched/thread.h>
-#include <arch/x86_64/cpu.h>
 #include <mm/kmalloc.h>
 #include <mm/hhdm.h>
 #include <mm/vmm.h>

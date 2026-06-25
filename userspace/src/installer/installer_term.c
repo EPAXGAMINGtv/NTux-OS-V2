@@ -69,15 +69,7 @@ static void inst_status(const char* line) {
     g_status[sizeof(g_status) - 1] = '\0';
 }
 
-static int starts_with(const char* s, const char* prefix) {
-    if (!s || !prefix) return 0;
-    while (*prefix) {
-        if (*s != *prefix) return 0;
-        ++s;
-        ++prefix;
-    }
-    return 1;
-}
+
 
 static int ends_with(const char* s, const char* suffix) {
     size_t sl;
@@ -99,8 +91,6 @@ static int should_skip_on_install(const char* src_path) {
     if (ends_with(src_path, "/boot/boot/modules/INSTALLER.ELF")) return 1;
     if (ends_with(src_path, "/boot/boot/modules/installer_term.elf")) return 1;
     if (ends_with(src_path, "/boot/boot/modules/INSTALLER_TERM.ELF")) return 1;
-    if (ends_with(src_path, "/boot/limine/limine-uefi-cd.bin")) return 1;
-    if (ends_with(src_path, "/boot/boot/limine/limine-uefi-cd.bin")) return 1;
     return 0;
 }
 
@@ -112,19 +102,27 @@ static int dir_exists(const char* path) {
 }
 
 static void progress_update(int force_newline) {
-    (void)force_newline;
     uint64_t total = g_copy_total_bytes ? g_copy_total_bytes : g_copy_total;
     uint64_t done = g_copy_total_bytes ? g_copy_done_bytes : g_copy_done;
     if (total == 0) return;
     int percent = (int)((done * 100u) / total);
-    if (percent == g_copy_last_percent) return;
+    if (percent == g_copy_last_percent && !force_newline) return;
     g_copy_last_percent = percent;
     g_progress_percent = percent;
+    if (g_console_mode) {
+        printf("\r[");
+        for (int i = 0; i < 50; ++i) {
+            if (i < percent / 2) printf("=");
+            else if (i == percent / 2) printf(">");
+            else printf(" ");
+        }
+        printf("] %d%%", percent);
+        fflush(stdout);
+        if (force_newline) printf("\n");
+    }
 }
 
-static int is_iso_name(const char* name) {
-    return starts_with(name, "iso") || starts_with(name, "cd");
-}
+
 
 static int make_child_path(const char* base, const char* name, char out[INS_PATH_MAX]) {
     size_t bl = strlen(base);
@@ -478,70 +476,10 @@ cleanup:
     return rc;
 }
 
-static __attribute__((noinline)) int detect_source(char source_out[INS_PATH_MAX]) {
-    uint64_t count = 0;
-    int have_source = 0;
-    long rc = sys_fs_list_dir("/", g_dirents, INS_LS_MAX, &count);
-    if (rc != 0) return -1;
-    if (count > INS_LS_MAX) count = INS_LS_MAX;
-
-    for (uint64_t i = 0; i < count; ++i) {
-        if (!g_dirents[i].is_dir) continue;
-        if (!have_source && is_iso_name(g_dirents[i].name)) {
-            if (make_child_path("/", g_dirents[i].name, source_out) == 0) {
-                have_source = 1;
-            }
-        }
-    }
-    if (!have_source) {
-        ntux_dirent_t probe[1];
-        uint64_t n = 0;
-        if (sys_fs_list_dir("/boot/boot", probe, 1, &n) == 0) {
-            strncpy(source_out, "/boot/boot", INS_PATH_MAX - 1);
-            source_out[INS_PATH_MAX - 1] = '\0';
-            have_source = 1;
-        } else if (sys_fs_list_dir("/boot", probe, 1, &n) == 0) {
-            strncpy(source_out, "/boot", INS_PATH_MAX - 1);
-            source_out[INS_PATH_MAX - 1] = '\0';
-            have_source = 1;
-        }
-    }
-    if (!have_source) {
-        uint64_t n = 0;
-        if (sys_fs_list_dir("/", g_dirents, INS_LS_MAX, &n) == 0) {
-            if (n > INS_LS_MAX) n = INS_LS_MAX;
-            for (uint64_t i = 0; i < n; ++i) {
-                if (!g_dirents[i].is_dir) continue;
-                char cand[INS_PATH_MAX];
-                char probe_path[INS_PATH_MAX];
-                ntux_dirent_t probe[1];
-                uint64_t pn = 0;
-                if (make_child_path("/", g_dirents[i].name, cand) != 0) continue;
-                if (make_child_path(cand, "boot/limine", probe_path) == 0 &&
-                    sys_fs_list_dir(probe_path, probe, 1, &pn) == 0) {
-                    strncpy(source_out, cand, INS_PATH_MAX - 1);
-                    source_out[INS_PATH_MAX - 1] = '\0';
-                    have_source = 1;
-                    break;
-                }
-                if (make_child_path(cand, "boot/boot/limine", probe_path) == 0 &&
-                    sys_fs_list_dir(probe_path, probe, 1, &pn) == 0) {
-                    strncpy(source_out, cand, INS_PATH_MAX - 1);
-                    source_out[INS_PATH_MAX - 1] = '\0';
-                    have_source = 1;
-                    break;
-                }
-                if (make_child_path(cand, "boot", probe_path) == 0 &&
-                    sys_fs_list_dir(probe_path, probe, 1, &pn) == 0) {
-                    strncpy(source_out, cand, INS_PATH_MAX - 1);
-                    source_out[INS_PATH_MAX - 1] = '\0';
-                    have_source = 1;
-                    break;
-                }
-            }
-        }
-    }
-    return have_source ? 0 : -1;
+static int detect_source(char source_out[INS_PATH_MAX]) {
+    if (!dir_exists("/iso0")) return -1;
+    strcpy(source_out, "/iso0");
+    return 0;
 }
 
 static int parse_drive_part_name(const char* name, uint64_t* out_drive, uint64_t* out_part) {
@@ -886,13 +824,19 @@ static int run_install(void) {
     }
 
     inst_status("Detecting source...");
-    if (detect_source(g_source) != 0) {
+    {
+        char dbg[96];
+        snprintf(dbg, sizeof(dbg), "[debug] source: %s", g_source);
+        inst_log_line(dbg);
+    }
+    if (g_source[0] == '\0' && detect_source(g_source) != 0) {
         inst_log_line("[err] no source found");
         return -1;
     }
 
     inst_status("Wiping...");
     inst_log_line("[1/4] wipe");
+    inst_log_line("[debug] wiping MBR area...");
     if (wipe_range(drive, 0, (dev.sectors > 2048u) ? 2048u : dev.sectors) != 0) {
         inst_log_line("[err] wipe failed");
         return -1;
@@ -955,32 +899,47 @@ static int run_install(void) {
 
     inst_status("Formatting...");
     inst_log_line("[3/4] format");
+    {
+        char dbg[128];
+        snprintf(dbg, sizeof(dbg), "[debug] fmt: drive=%llu fs=%u esp=%d esp_lba=%llu esp_secs=%llu part_lba=%llu part_secs=%llu",
+               (unsigned long long)drive, (unsigned)fs_type, use_esp,
+               (unsigned long long)esp_lba, (unsigned long long)esp_secs,
+               (unsigned long long)part_lba, (unsigned long long)part_secs);
+        inst_log_line(dbg);
+    }
     if (use_esp) {
         if (esp_secs > 0xFFFFFFFFu) {
             inst_log_line("[err] ESP too large");
             return -1;
         }
+        inst_log_line("[debug] mkfs.fat ESP...");
         if (sys_mkfs_fat(drive, esp_lba, esp_secs, 0) != 0) {
             inst_log_line("[err] mkfs.fat (ESP) failed");
             return -1;
         }
+        inst_log_line("[debug] mkfs.fat ESP done");
     }
 
     if (fs_type == 2) {
+        inst_log_line("[debug] mkfs.ext2...");
         if (sys_mkfs_ext2(drive, part_lba, part_secs) != 0) {
             inst_log_line("[err] mkfs.ext2 failed");
             return -1;
         }
+        inst_log_line("[debug] mkfs.ext2 done");
     } else if (fs_type == 4) {
+        inst_log_line("[debug] mkfs.ext4...");
         if (sys_mkfs_ext4(drive, part_lba, part_secs) != 0) {
             inst_log_line("[err] mkfs.ext4 failed");
             return -1;
         }
+        inst_log_line("[debug] mkfs.ext4 done");
     } else {
         if (part_secs > 0xFFFFFFFFu) {
             inst_log_line("[err] partition too large");
             return -1;
         }
+        inst_log_line("[debug] mkfs.fat main...");
         if (sys_mkfs_fat(drive, part_lba, part_secs, fs_type) != 0) {
             inst_log_line("[warn] mkfs.fat retry auto");
             if (sys_mkfs_fat(drive, part_lba, part_secs, 0) != 0) {
@@ -998,25 +957,52 @@ static int run_install(void) {
                 }
             }
         }
+        inst_log_line("[debug] mkfs.fat main done");
     }
+    inst_log_line("[debug] fs_rescan...");
     if (sys_fs_rescan() != 0) {
         inst_log_line("[err] fs rescan failed");
         return -1;
     }
+    inst_log_line("[debug] fs_rescan done");
 
-    char target[INS_PATH_MAX];
-    char esp_target[INS_PATH_MAX];
-    if (use_esp) {
-        if (find_mount_for_drive_part(drive, 1, esp_target) != 0) {
-            inst_log_line("[err] ESP mount not found");
-            return -1;
+    char target[INS_PATH_MAX] = {0};
+    char esp_target[INS_PATH_MAX] = {0};
+    {
+        char dbg[96];
+        snprintf(dbg, sizeof(dbg), "[debug] finding mount for drive=%llu", (unsigned long long)drive);
+        inst_log_line(dbg);
+    }
+    inst_log_line("[info] waiting for mount after format...");
+    for (int retry = 0; retry < 100; retry++) {
+        uint64_t hz = sys_get_timer_hz();
+        if (hz <= 0) hz = 200;
+        sys_wait_ticks(hz);
+        sys_fs_rescan();
+
+        if (use_esp) {
+            if (find_mount_for_drive_part(drive, 1, esp_target) == 0 &&
+                find_mount_for_drive_part(drive, 2, target) == 0) {
+                inst_log_line("[debug] found mounts after retry loop");
+                break;
+            }
+            esp_target[0] = '\0';
+            target[0] = '\0';
+        } else {
+            if (find_mount_for_drive_part(drive, 1, target) == 0) {
+                inst_log_line("[debug] found target mount after retry");
+                break;
+            }
+            target[0] = '\0';
         }
-        if (find_mount_for_drive_part(drive, 2, target) != 0) {
-            inst_log_line("[err] target mount not found");
+    }
+    if (use_esp) {
+        if (esp_target[0] == '\0' || target[0] == '\0') {
+            inst_log_line("[err] mount not found after format");
             return -1;
         }
     } else {
-        if (find_mount_for_drive_part(drive, 1, target) != 0) {
+        if (target[0] == '\0') {
             inst_log_line("[err] target mount not found");
             return -1;
         }
@@ -1025,18 +1011,27 @@ static int run_install(void) {
         inst_log_line("[err] source == target");
         return -1;
     }
+    {
+        char dbg[128];
+        snprintf(dbg, sizeof(dbg), "[debug] target=%s esp_target=%s source=%s", target, esp_target, g_source);
+        inst_log_line(dbg);
+    }
 
     inst_status("Copying...");
     inst_log_line("[4/4] copy");
+    inst_log_line("[debug] removing target tree...");
     if (remove_tree(target) != 0) {
         inst_log_line("[err] delete failed");
         return -1;
     }
+    inst_log_line("[debug] remove target done");
     if (use_esp) {
+        inst_log_line("[debug] removing esp tree...");
         if (remove_tree(esp_target) != 0) {
             inst_log_line("[err] ESP delete failed");
             return -1;
         }
+        inst_log_line("[debug] remove esp done");
     }
     g_copy_total = 0;
     g_copy_done = 0;
@@ -1044,17 +1039,24 @@ static int run_install(void) {
     g_copy_done_bytes = 0;
     g_copy_last_percent = -1;
     g_progress_percent = 0;
+    inst_log_line("[debug] scanning source tree...");
     if (scan_tree(g_source, &g_copy_total, &g_copy_total_bytes) != 0) {
         inst_log_line("[err] scan failed");
         return -1;
     }
+    inst_log_line("[debug] scan done: files=X, bytes=X");
+    char dbg[96];
+    snprintf(dbg, sizeof(dbg), "[debug] scan: files=%llu, bytes=%llu", (unsigned long long)g_copy_total, (unsigned long long)g_copy_total_bytes);
+    inst_log_line(dbg);
     if (g_copy_total == 0) g_copy_total = 1;
     if (g_copy_total_bytes == 0) g_copy_total_bytes = 1;
     progress_update(0);
+    inst_log_line("[debug] starting copy tree...");
     if (copy_tree(g_source, target) != 0) {
         inst_log_line("[err] copy failed");
         return -1;
     }
+    inst_log_line("[debug] copy tree done");
     progress_update(1);
 
     if (use_esp) {
@@ -1177,11 +1179,13 @@ static int run_console_installer(void) {
         return -1;
     }
 
-    if (detect_source(g_source) != 0) {
-        puts("[err] no source found");
+    if (!dir_exists("/iso0")) {
+        puts("[err] /iso0 not found");
         sys_console_release();
         return -1;
     }
+    strcpy(g_source, "/iso0");
+
     if (scan_drives() != 0) {
         puts("[err] no drives found");
         sys_console_release();

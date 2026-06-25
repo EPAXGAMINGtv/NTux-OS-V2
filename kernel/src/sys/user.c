@@ -1,4 +1,4 @@
-#include <sys/user.h>
+#include "user.h"
 #include <fs/fs.h>
 #include <lib/string.h>
 #include <lib/kutils.h>

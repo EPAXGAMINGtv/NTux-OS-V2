@@ -1,3 +1,26 @@
+/*
+ * int80.c -- Syscall dispatch for int 0x80 (syscall/interrupt handler).
+ *
+ * This is THE interface between user-space programs and the kernel.
+ * User programs trigger a software interrupt (int 0x80) with:
+ *   - syscall number in rax
+ *   - up to 3 arguments in rdi, rsi, rdx
+ * The kernel saves all registers into an int80_regs_t struct, then
+ * calls syscall_int80_dispatch() which handles each syscall number
+ * in a giant switch statement.
+ *
+ * Each handler must:
+ *   1. Validate all user-space pointers (user_ptr_range_ok / user_cstr_ok)
+ *   2. Perform the requested operation
+ *   3. Store the return value in regs->rax
+ *   4. Return 0 (continue execution) or 1 (exit thread)
+ *
+ * Security: Every pointer from userspace is validated before use.
+ * The helper functions current_user_range(), user_ptr_range_ok(),
+ * and user_cstr_ok() prevent user-space programs from accessing
+ * kernel memory or unmapped regions.
+ */
+
 #include <syscall/int80.h>
 #include <syscall/deskapi.h>
 #include <limine.h>
@@ -30,6 +53,10 @@
 
 extern volatile struct limine_framebuffer_request framebuffer_request;
 
+/*
+ * Parse a dotted-decimal IPv4 string (e.g. "192.168.1.1") into an
+ * ipv4_address_t struct. Returns 0 on success, -1 on parse error.
+ */
 static int parse_ipv4(const char* s, ipv4_address_t* ip) {
     int octets[4] = { -1, -1, -1, -1 };
     int cur = 0, val = 0;
@@ -54,6 +81,11 @@ static int parse_ipv4(const char* s, ipv4_address_t* ip) {
     return 0;
 }
 
+/*
+ * Directory entry struct for INT80_FS_LIST_DIR syscall.
+ * Mirror of vfs_dirent_t but with explicit padding to ensure
+ * a fixed ABI between kernel and userspace.
+ */
 typedef struct {
     char name[64];
     uint8_t is_dir;
@@ -65,15 +97,27 @@ typedef struct {
 
 static uint8_t g_serial_init_done = 0;
 
+/*
+ * Scale an 8-bit color channel (0-255) to an arbitrary bit depth.
+ * For example, converting 8-bit red to 5-bit red (0-31).
+ * Uses proper rounding to avoid banding artifacts.
+ */
 static uint32_t scale_chan8_to_n(uint8_t v, uint8_t bits) {
     if (bits == 0) return 0;
     if (bits >= 8) {
+        /* Just shift up: fits exactly or exceeds destination width */
         return ((uint32_t)v) << (bits - 8);
     }
+    /* Scale down with rounding: v * (2^bits - 1) / 255 */
     uint32_t maxv = (1u << bits) - 1u;
     return ((uint32_t)v * maxv + 127u) / 255u;
 }
 
+/*
+ * Pack R,G,B values into a framebuffer-native pixel based on the
+ * framebuffer's color mask layout (shift + size per channel).
+ * This handles RGB565, RGB888, RGB332, and other bit layouts.
+ */
 static uint32_t pack_rgb_for_fb(uint8_t r, uint8_t g, uint8_t b, volatile struct limine_framebuffer *fb) {
     uint32_t pr = scale_chan8_to_n(r, fb->red_mask_size) << fb->red_mask_shift;
     uint32_t pg = scale_chan8_to_n(g, fb->green_mask_size) << fb->green_mask_shift;
@@ -81,21 +125,47 @@ static uint32_t pack_rgb_for_fb(uint8_t r, uint8_t g, uint8_t b, volatile struct
     return pr | pg | pb;
 }
 
+/*
+ * Initialize COM1 serial port (if not done yet).
+ * This sets up 115200 baud (divisor = 1 with DLAB on),
+ * 8 data bits, no parity, 1 stop bit.
+ *
+ * Register layout (PC standard UART 16550):
+ *   BASE+0 = data (DLAB=0) / divisor low (DLAB=1)
+ *   BASE+1 = int enable (DLAB=0) / divisor high (DLAB=1)
+ *   BASE+2 = interrupt ID / FIFO control
+ *   BASE+3 = line control (bit 7 = DLAB, bits 0-1 = data, bit 3 = parity, bit 2 = stop)
+ *   BASE+4 = modem control
+ *   BASE+5 = line status
+ */
 static void serial_init_once(void) {
     if (g_serial_init_done) return;
+    /* Disable interrupts */
     outb(COM1_PORT + 1, 0x00);
+    /* Set DLAB=1 (bit 7) to configure baud rate divisor */
     outb(COM1_PORT + 3, 0x80);
+    /* Divisor = 1 → 115200 baud (with 1.8432 MHz oscillator) */
     outb(COM1_PORT + 0, 0x01);
     outb(COM1_PORT + 1, 0x00);
+    /* Line control: 8N1 (8 bits, no parity, 1 stop) */
     outb(COM1_PORT + 3, 0x03);
+    /* FIFO control: enable, clear, 14-byte threshold */
     outb(COM1_PORT + 2, 0xC7);
+    /* Modem control: DTR+RTS on, enable IRQ routing */
     outb(COM1_PORT + 4, 0x0B);
     g_serial_init_done = 1;
 }
 
+/*
+ * Try to read one character from the COM1 serial port.
+ * Returns 1 if a character was read, 0 if no data available.
+ * CR (\r) is converted to LF (\n) for consistency with the
+ * terminal input convention used elsewhere in the kernel.
+ */
 static int serial_try_getchar(char* out) {
     if (!out) return 0;
     serial_init_once();
+    /* Check line status register bit 0 = data ready */
     if ((inb(COM1_PORT + 5) & 0x01) == 0) return 0;
     uint8_t c = inb(COM1_PORT + 0);
     if (c == '\r') c = '\n';
@@ -103,6 +173,11 @@ static int serial_try_getchar(char* out) {
     return 1;
 }
 
+/*
+ * Safe multiplication: compute a * b, detect overflow.
+ * Returns 0 on success (result in *out), 1 if overflow would occur.
+ * If either operand is 0, result is 0 (trivially safe).
+ */
 static int mul_overflow_size(size_t a, size_t b, size_t* out) {
     if (!out) return 0;
     if (a == 0 || b == 0) {
@@ -114,6 +189,11 @@ static int mul_overflow_size(size_t a, size_t b, size_t* out) {
     return 0;
 }
 
+/*
+ * Get the virtual address range that the current user thread is
+ * allowed to access. Returns 1 if a specific range is enforced,
+ * 0 if unrestricted (e.g. kernel threads).
+ */
 static int current_user_range(uintptr_t* out_start, uintptr_t* out_end) {
     uint64_t start = 0;
     uint64_t end = 0;
@@ -127,6 +207,19 @@ static int current_user_range(uintptr_t* out_start, uintptr_t* out_end) {
     return 1;
 }
 
+/*
+ * Validate that a user-space pointer + length is safe to access.
+ *
+ * Checks:
+ *   1. If length is 0, any pointer (even NULL) is OK (no access needed).
+ *   2. NULL pointer with non-zero length is rejected.
+ *   3. Integer overflow from ptr + (len-1) is detected.
+ *   4. If the thread has a restricted memory range, the whole range
+ *      must be inside it.
+ *
+ * This prevents user-space programs from passing kernel pointers
+ * or accessing memory they don't own.
+ */
 static int user_ptr_range_ok(const void* ptr, size_t len) {
     if (len == 0) return 1;
     if (!ptr) return 0;
@@ -140,6 +233,16 @@ static int user_ptr_range_ok(const void* ptr, size_t len) {
     return p >= start && last < end;
 }
 
+/*
+ * Validate that a user-space C string is fully accessible and null-terminated.
+ *
+ * Scans up to 'max_scan' bytes for a null terminator, but also ensures
+ * every byte scanned is within the user's allowed memory range.
+ * Returns 1 if the string is safe to read, 0 otherwise.
+ *
+ * This is important because we can't trust strlen() on user pointers;
+ * the string might not be null-terminated, or might cross into kernel memory.
+ */
 static int user_cstr_ok(const char* s, size_t max_scan) {
     if (!s || max_scan == 0) return 0;
     uintptr_t start = 0;
@@ -161,6 +264,15 @@ static int user_cstr_ok(const char* s, size_t max_scan) {
     return 0;
 }
 
+/*
+ * Get the thread ID of the currently running thread.
+ * Returns -1 if no valid thread is running (shouldn't happen).
+ *
+ * Note: Uses the global current_thread_id directly without locking.
+ * This is safe because only one CPU core is active and the scheduler
+ * only changes this during a context switch, which won't happen
+ * while we're in a syscall handler.
+ */
 static int int80_current_tid(void) {
     int tid = current_thread_id;
     if (tid < 0 || tid >= MAX_THREADS) return -1;
@@ -168,6 +280,13 @@ static int int80_current_tid(void) {
     return tid;
 }
 
+/*
+ * Console input ownership helpers.
+ * The "console" is the text-mode terminal input stream.
+ * Only one thread can own it at a time (the foreground task).
+ * These helpers check/release/claim ownership in terms of
+ * the current thread's TID.
+ */
 static int console_input_owner_is_current(void) {
     int tid = int80_current_tid();
     if (tid < 0) return 0;
@@ -186,6 +305,11 @@ static int console_input_claim_or_is_current_for_current(void) {
     return console_input_claim_or_is_current(tid);
 }
 
+/*
+ * Case-insensitive substring search.
+ * Returns 1 if 'sub' appears anywhere in 's', 0 otherwise.
+ * The OR-with-32 trick converts uppercase ASCII to lowercase.
+ */
 static int str_has_ci(const char* s, const char* sub) {
     if (!s || !sub || !*sub) return 0;
     for (; *s; s++) {
@@ -197,10 +321,29 @@ static int str_has_ci(const char* s, const char* sub) {
     return 0;
 }
 
+/*
+ * Main syscall dispatch handler.
+ *
+ * Called from the interrupt 0x80 handler (in assembly) after all registers
+ * have been saved into an int80_regs_t struct. The syscall number is in
+ * regs->rax, arguments are in regs->rdi, regs->rsi, regs->rdx.
+ *
+ * Each case in the switch handles one syscall:
+ *   - Validates user pointers
+ *   - Performs the operation
+ *   - Stores result in regs->rax
+ *   - Returns 0 to continue execution, or 1 to terminate the thread
+ *
+ * The syscall numbers are defined in int80.h.
+ */
 uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
     if (!regs) return 0;
 
     switch (regs->rax) {
+        /*
+         * ── Console / Terminal Output ──────────────────────────────────
+         */
+
         case INT80_WRITE: {
             const char *buf = (const char *)regs->rdi;
             uint64_t len = regs->rsi;
@@ -221,6 +364,10 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = len;
             return 0;
         }
+        /*
+         * ── Thread Lifecycle ───────────────────────────────────────────
+         */
+
         case INT80_EXIT:
             regs->rax = 0;
             return 1;
@@ -237,6 +384,26 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
         case INT80_GET_TICKS:
             regs->rax = get_tick_count();
             return 0;
+        /*
+         * Block the current thread for a given number of timer ticks.
+         *
+         * How this works:
+         *   1. We set the thread's wake_tick to the target time.
+         *   2. We mark it BLOCKED, remove it from the runqueue, and add
+         *      it to the wake_list (a list of sleeping threads).
+         *   3. We call scheduler() which picks another thread to run.
+         *   4. When the timer interrupt fires, the timer ISR checks the
+         *      wake_list and marks any expired threads as READY, adding
+         *      them back to the runqueue.
+         *   5. When the scheduler picks our thread again, execution resumes
+         *      here. We re-lock, check if we're still blocked (might have
+         *      been woken early by something else), and HLT-loop until
+         *      the wake time is actually reached.
+         *
+         * The HLT loop after scheduler() is a safety net: if the thread
+         * was woken but the timer hasn't reached wake_tick yet, we wait
+         * with minimal power consumption.
+         */
         case INT80_WAIT_TICKS: {
             uint64_t wait_for = regs->rdi;
             if (wait_for == 0) {
@@ -256,10 +423,21 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 }
             }
             thread_unlock_global();
+            /*
+             * Call the scheduler. This may context-switch away from
+             * this thread if another thread is ready to run. When we
+             * return here, either:
+             *   a) A context switch happened (we were BLOCKED → READY
+             *      by timer ISR → RUNNING by scheduler), OR
+             *   b) No switch (still BLOCKED because no one else is ready).
+             */
             scheduler();
-            /* After scheduler: either a context switch happened (we were
-             * BLOCKED → READY → RUNNING) or no switch (still BLOCKED).
-             * In either case, wait until wake time and fix up state. */
+            /*
+             * Safety HLT loop: ensure we actually wait until wake time.
+             * The timer ISR may wake us up early (e.g. to check conditions),
+             * so we loop until the tick count reaches the target.
+             * HLT puts the CPU in a low-power state until the next IRQ.
+             */
             thread_lock_global();
             if (tid >= 0 && tid < MAX_THREADS && thread_list[tid]) {
                 thread_t* t = thread_list[tid];
@@ -293,6 +471,10 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = 0;
             return 0;
         }
+        /*
+         * ── Graphics / Input / Screen ──────────────────────────────────
+         */
+
         case INT80_GETCHAR: {
             if (!console_input_claim_or_is_current_for_current()) {
                 regs->rax = (uint64_t)-1;
@@ -311,6 +493,10 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             }
             return 0;
         }
+        /*
+         * ── System Control ─────────────────────────────────────────────
+         */
+
         case INT80_REBOOT:
             system_reboot();
             regs->rax = 0;
@@ -319,10 +505,21 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             system_shutdown();
             regs->rax = 0;
             return 0;
+
+        /*
+         * ── Scheduling ─────────────────────────────────────────────────
+         */
+
         case INT80_YIELD:
             thread_yield();
             regs->rax = 0;
             return 0;
+        /*
+         * ── Console Ownership ──────────────────────────────────────────
+         * The console input can only be read by one thread at a time
+         * (foreground task). These syscalls let user-space manage that.
+         */
+
         case INT80_CONSOLE_RELEASE:
             console_input_release_if_current();
             regs->rax = 0;
@@ -340,6 +537,11 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = 0u;
             return 0;
         }
+        /*
+         * ── Process / Thread Management ────────────────────────────────
+         * Start, list, kill, and query threads from user-space.
+         */
+
         case INT80_TASK_ADD: {
             const char* path = (const char*)(uintptr_t)regs->rdi;
             const char* status = 0;
@@ -447,6 +649,10 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (uint64_t)module_loader_list(out, max_entries, out_count_ptr);
             return 0;
         }
+        /*
+         * ── User / Group / Permissions ─────────────────────────────────
+         */
+
         case INT80_GETEUID: {
             regs->rax = (uint64_t)thread_get_current_euid();
             return 0;
@@ -675,6 +881,12 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (uint64_t)thread_get_current_uid();
             return 0;
         }
+        /*
+         * ── Filesystem Operations ──────────────────────────────────────
+         * CRITICAL: All paths are validated via user_cstr_ok() before use.
+         * Paths must be null-terminated and within user address space.
+         */
+
         case INT80_FS_EXISTS: {
             const char* path = (const char*)(uintptr_t)regs->rdi;
             if (!user_cstr_ok(path, 1024u)) {
@@ -815,6 +1027,10 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = 0;
             return 0;
         }
+        /*
+         * ── Mouse / Keyboard Input ─────────────────────────────────────
+         */
+
         case INT80_MOUSE_GET_STATE: {
             int80_mouse_state_t* out = (int80_mouse_state_t*)(uintptr_t)regs->rdi;
             if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
@@ -871,6 +1087,13 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (keyboard_set_layout(name) == 0) ? 0u : (uint64_t)-1;
             return 0;
         }
+        /*
+         * ── Framebuffer / Pixel Graphics ───────────────────────────────
+         * These syscalls allow user-space to draw pixels directly on the
+         * framebuffer. The kernel validates all pixel data bounds and
+         * converts from 32-bit RGBA to the framebuffer's native pixel format.
+         */
+
         case INT80_FB_GET_INFO: {
             int80_fb_info_t* out = (int80_fb_info_t*)(uintptr_t)regs->rdi;
             if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
@@ -907,6 +1130,20 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = 0;
             return 0;
         }
+        /*
+         * Blit a 32-bit RGBA image from user-space to the framebuffer.
+         *
+         * The source image has one 32-bit pixel per element (R, G, B, A
+         * in bytes 2,1,0,3 respectively). The framebuffer may use a
+         * different pixel format (e.g. RGB565, XRGB8888), so we convert
+         * each pixel using the framebuffer's color mask information.
+         *
+         * Validation steps:
+         *   1. Source dimensions and pitch must be non-zero and consistent.
+         *   2. The entire source buffer must be within user address space.
+         *   3. The framebuffer must be RGB format with valid color masks.
+         *   4. Copy dimensions are clamped to framebuffer dimensions.
+         */
         case INT80_FB_BLIT32: {
             const uint32_t* src = (const uint32_t*)(uintptr_t)regs->rdi;
             uint32_t src_w = (uint32_t)regs->rsi;
@@ -916,14 +1153,17 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 regs->rax = (uint64_t)-1;
                 return 0;
             }
+            /* Check for integer overflow in width */
             if (src_w > (UINT32_MAX / sizeof(uint32_t))) {
                 regs->rax = (uint64_t)-1;
                 return 0;
             }
+            /* Pitch must be at least width * pixel size (no negative stride) */
             if (src_pitch < src_w * sizeof(uint32_t)) {
                 regs->rax = (uint64_t)-1;
                 return 0;
             }
+            /* Verify the full source buffer is in user address space */
             if ((uint64_t)src_pitch > 0 && src_h > 0) {
                 size_t src_bytes = 0;
                 if (mul_overflow_size((size_t)src_pitch, (size_t)src_h, &src_bytes) || !user_ptr_range_ok(src, src_bytes)) {
@@ -931,6 +1171,7 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                     return 0;
                 }
             }
+            /* Check framebuffer availability and format */
             if (!framebuffer_request.response || framebuffer_request.response->framebuffer_count < 1) {
                 regs->rax = (uint64_t)-1;
                 return 0;
@@ -944,10 +1185,12 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 regs->rax = (uint64_t)-1;
                 return 0;
             }
+            /* All color channels must have non-zero mask size */
             if (fb->red_mask_size == 0 || fb->green_mask_size == 0 || fb->blue_mask_size == 0) {
                 regs->rax = (uint64_t)-1;
                 return 0;
             }
+            /* Color masks must not overflow the pixel width */
             if ((uint32_t)fb->red_mask_shift + (uint32_t)fb->red_mask_size > (uint32_t)fb->bpp ||
                 (uint32_t)fb->green_mask_shift + (uint32_t)fb->green_mask_size > (uint32_t)fb->bpp ||
                 (uint32_t)fb->blue_mask_shift + (uint32_t)fb->blue_mask_size > (uint32_t)fb->bpp) {
@@ -955,11 +1198,21 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 return 0;
             }
 
+            /* Clamp copy size to framebuffer dimensions */
             uint32_t copy_w = src_w;
             uint32_t copy_h = src_h;
             if (copy_w > (uint32_t)fb->width) copy_w = (uint32_t)fb->width;
             if (copy_h > (uint32_t)fb->height) copy_h = (uint32_t)fb->height;
 
+            /*
+             * Convert pixels row by row.
+             * Source: 32-bit RGBA (user-space)
+             * Destination: framebuffer-native pixel format
+             *
+             * We use the framebuffer's color mask shift/size info to
+             * pack each channel correctly. The source is always treated
+             * as little-endian 0xAABBGGRR (standard x86 layout).
+             */
             uint8_t* dst = (uint8_t*)(uintptr_t)fb->address;
             for (uint32_t y = 0; y < copy_h; ++y) {
                 const uint8_t* src_row = (const uint8_t*)(const void*)src + (size_t)y * (size_t)src_pitch;
@@ -967,16 +1220,19 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 const uint32_t* s = (const uint32_t*)(const void*)src_row;
                 for (uint32_t x = 0; x < copy_w; ++x) {
                     uint32_t p = s[x];
+                    /* Extract R,G,B from 32-bit word (x86: B at byte 0, G at 1, R at 2) */
                     uint8_t b = (uint8_t)(p & 0xFFu);
                     uint8_t g = (uint8_t)((p >> 8) & 0xFFu);
                     uint8_t r = (uint8_t)((p >> 16) & 0xFFu);
                     uint32_t out = pack_rgb_for_fb(r, g, b, fb);
+                    /* Write pixel bytes in framebuffer-native byte order */
                     if (fb->bpp == 32) {
                         dst_row[x * 4u + 0u] = (uint8_t)(out & 0xFFu);
                         dst_row[x * 4u + 1u] = (uint8_t)((out >> 8) & 0xFFu);
                         dst_row[x * 4u + 2u] = (uint8_t)((out >> 16) & 0xFFu);
                         dst_row[x * 4u + 3u] = (uint8_t)((out >> 24) & 0xFFu);
                     } else {
+                        /* 24-bit framebuffer (3 bytes per pixel, no alpha) */
                         dst_row[x * 3u + 0u] = (uint8_t)(out & 0xFFu);
                         dst_row[x * 3u + 1u] = (uint8_t)((out >> 8) & 0xFFu);
                         dst_row[x * 3u + 2u] = (uint8_t)((out >> 16) & 0xFFu);
@@ -986,6 +1242,10 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = 0;
             return 0;
         }
+        /*
+         * ── Misc / Time / Info ─────────────────────────────────────────
+         */
+
         case INT80_SET_TEXT_COLOR: {
             g_printer.color = (uint32_t)regs->rdi;
             regs->rax = 0;
@@ -1015,6 +1275,13 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (uint64_t)timer_get_hz();
             return 0;
         }
+        /*
+         * ── Block Device I/O ───────────────────────────────────────────
+         * Raw sector-level access to storage devices (AHCI, ATA, etc.).
+         * Users can list drives, partitions, read/write sectors,
+         * and create/format filesystems.
+         */
+
         case INT80_BLK_LIST: {
             int80_block_device_info_t* out = (int80_block_device_info_t*)(uintptr_t)regs->rdi;
             size_t max_entries = (size_t)regs->rsi;
@@ -1108,6 +1375,13 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (uint64_t)fs_mkfs_fat((uint8_t)regs->rdi, (uint32_t)regs->rsi, (uint32_t)regs->rdx, (uint8_t)regs->rcx);
             return 0;
         }
+        /*
+         * ── File Descriptor Operations ─────────────────────────────────
+         * POSIX-like open/read/write/close/ioctl/lseek on files.
+         * These wrap the fd_*() layer which provides per-thread
+         * file descriptor tables on top of the VFS.
+         */
+
         case INT80_OPEN: {
             const char* path = (const char*)(uintptr_t)regs->rdi;
             int flags = (int)regs->rsi;
@@ -1163,6 +1437,12 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (uint64_t)fd_lseek(fd, offset, whence);
             return 0;
         }
+        /*
+         * ── Networking ─────────────────────────────────────────────────
+         * Ping (ICMP), HTTP GET (TCP), and debug/status queries.
+         * All network operations go through the kernel's network stack.
+         */
+
         case INT80_NET_PING: {
             const char* host = (const char*)(uintptr_t)regs->rdi;
             char* out = (char*)(uintptr_t)regs->rsi;
@@ -1207,6 +1487,21 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (uint64_t)copy_len;
             return 0;
         }
+        /*
+         * HTTP GET request — a simple user-space HTTP client via the kernel.
+         *
+         * Handles:
+         *   - URL parsing ("http://host/path")
+         *   - DNS lookup (if host is not an IP address)
+         *   - TCP connection on port 80
+         *   - HTTP/1.1 GET request with redirect following (up to 5)
+         *   - Response body extraction (content-length or chunked transfer)
+         *   - Plain-text reply (no TLS — HTTPS returns an error)
+         *
+         * This is intentionally a minimal implementation for a browser.
+         * A more complete TCP/IP stack would separate these concerns,
+         * but for a hobby OS this works well enough.
+         */
         case INT80_NET_HTTP_GET: {
             const char* url = (const char*)(uintptr_t)regs->rdi;
             char* out = (char*)(uintptr_t)regs->rsi;
@@ -1216,7 +1511,11 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 return 0;
             }
 
-            char* buf = (char*)kmalloc(65536);
+            /*
+             * Allocate 65537 bytes so we have room for a null terminator
+             * after reading up to 65536 bytes of HTTP response data.
+             */
+            char* buf = (char*)kmalloc(65537);
             if (!buf) { regs->rax = -1; return 0; }
 
             char curr_url[512];
@@ -1226,6 +1525,16 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             int redirects = 0;
             int body_len = -1;
 
+            /*
+             * Follow redirects up to 5 times. Each iteration:
+             *   1. Parse the URL into host + path
+             *   2. DNS lookup (if host isn't an IP)
+             *   3. Connect via TCP on port 80
+             *   4. Send HTTP GET request
+             *   5. Parse response headers
+             *   6. If 3xx redirect, update URL and retry
+             *   7. If 2xx OK, extract body and return
+             */
             while (redirects < 5) {
                 const char* p = curr_url;
                 int is_https = 0;
@@ -1243,6 +1552,7 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                     return 0;
                 }
 
+                /* Parse host and path from URL */
                 char host[128];
                 char path[256];
                 int slash = -1;
@@ -1250,6 +1560,7 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                     if (p[i] == '/' && slash < 0) slash = i;
                 }
                 if (slash < 0) {
+                    /* No path: use "/" as default */
                     strncpy(host, p, sizeof(host) - 1);
                     host[sizeof(host) - 1] = '\0';
                     path[0] = '/'; path[1] = '\0';
@@ -1295,7 +1606,7 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 if (total <= 0) { body_len = -1; break; }
                 buf[total] = '\0';
 
-                // Find end of headers
+                /* Find the empty line (\r\n\r\n) separating headers from body */
                 char* hdr_end = NULL;
                 for (int i = 0; i < total - 3; i++) {
                     if (buf[i] == '\r' && buf[i+1] == '\n' && buf[i+2] == '\r' && buf[i+3] == '\n') {
@@ -1305,13 +1616,21 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 }
                 if (!hdr_end) { body_len = -1; break; }
 
-                // Parse status
+                /* Parse HTTP status code (e.g. "HTTP/1.1 200 OK") */
                 int status = 0;
                 char* sp = buf;
                 while (*sp && *sp != ' ') sp++;
                 if (*sp == ' ') { sp++; while (*sp >= '0' && *sp <= '9') { status = status * 10 + (*sp - '0'); sp++; } }
 
-                // Parse headers
+                /*
+                 * Parse response headers looking for:
+                 *   - Content-Length: size of body
+                 *   - Transfer-Encoding: chunked
+                 *   - Location: redirect URL (for 3xx responses)
+                 *
+                 * Headers are CRLF-delimited. We null-terminate each line
+                 * temporarily to use strcmp, then restore the delimiter.
+                 */
                 char* body = hdr_end + 4;
                 int body_remain = total - (int)(body - buf);
                 int content_len = -1;
@@ -1351,7 +1670,7 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                     line = nl + 2;
                 }
 
-                // Handle redirect
+                /* Handle 3xx redirect: update current URL and retry */
                 if (status >= 300 && status < 400 && location) {
                     int loc_len = 0;
                     while (location[loc_len] && location[loc_len] != '\r' && location[loc_len] != '\n') loc_len++;
@@ -1376,6 +1695,11 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
                 }
 
                 if (status >= 200 && status < 300) {
+                    /*
+                     * Chunked transfer encoding: body is split into chunks.
+                     * Each chunk: <size-in-hex>\r\n<data>\r\n
+                     * Last chunk has size 0. We decode in-place.
+                     */
                     if (is_chunked) {
                         char* src = body;
                         char* dst = body;
@@ -1436,6 +1760,10 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             kfree(buf);
             return 0;
         }
+        /*
+         * Return internal network stack debug statistics as a string.
+         * Shows packet counts, initialization status, and IP assignment.
+         */
         case INT80_NET_DEBUG: {
             char* out = (char*)(uintptr_t)regs->rdi;
             uint64_t cap = regs->rsi;
@@ -1483,6 +1811,12 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (uint64_t)network_set_dns_server(&ip);
             return 0;
         }
+        /*
+         * ── Desktop IPC (DeskAPI) ──────────────────────────────────────
+         * Simple message passing between user-space programs.
+         * Used by the GUI desktop environment.
+         */
+
         case INT80_DESKAPI_PUSH: {
             const char* buf = (const char*)(uintptr_t)regs->rdi;
             uint64_t len = regs->rsi;
@@ -1508,6 +1842,10 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (uint64_t)deskapi_pop(out, cap, out_len_ptr);
             return 0;
         }
+        /*
+         * ── System Information ─────────────────────────────────────────
+         */
+
         case INT80_GET_MEM_INFO: {
             int80_mem_info_t* out = (int80_mem_info_t*)(uintptr_t)regs->rdi;
             if (!out || !user_ptr_range_ok(out, sizeof(*out))) {
@@ -1588,6 +1926,10 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = (uint64_t)deskapi_dialog_push(tid, code, text);
             return 0;
         }
+        /*
+         * ── Audio ──────────────────────────────────────────────────────
+         */
+
         case INT80_AUDIO_PLAY: {
             const int16_t* buf = (const int16_t*)(uintptr_t)regs->rdi;
             uint32_t count = (uint32_t)regs->rsi;
@@ -1606,6 +1948,12 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             regs->rax = audio_is_playing() ? 1u : 0u;
             return 0;
         }
+        /*
+         * ── User-Space Memory Allocation ───────────────────────────────
+         * These syscalls let user-space allocate/free heap memory
+         * through the kernel's umalloc/ufree interface.
+         */
+
         case INT80_UMALLOC: {
             size_t sz = (size_t)regs->rdi;
             void *p = umalloc(sz);
@@ -1624,6 +1972,14 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
     }
 }
 
+/*
+ * Called when a user-space thread exits (e.g. via return from main()
+ * or explicit syscall exit). Cleans up console ownership and then
+ * terminates the thread through the scheduler.
+ *
+ * Note: This function never returns — thread_exit_current() does
+ * a context switch to the next ready thread.
+ */
 void syscall_user_thread_exit(int80_regs_t *regs) {
     (void)regs;
     console_input_release_if_current();
