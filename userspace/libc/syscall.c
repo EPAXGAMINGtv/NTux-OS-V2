@@ -278,12 +278,36 @@ long sys_net_http_get(const char* url, char* out, uint64_t out_cap) {
     return ntux_syscall3(INT80_NET_HTTP_GET, (uint64_t)(uintptr_t)url, (uint64_t)(uintptr_t)out, out_cap);
 }
 
+long sys_net_http_post(const char* url, const char* body, char* out, uint64_t out_cap) {
+    return ntux_syscall4(INT80_NET_HTTP_POST, (uint64_t)(uintptr_t)url, (uint64_t)(uintptr_t)out, out_cap, (uint64_t)(uintptr_t)body);
+}
+
 long sys_net_debug(char* out, uint64_t out_cap) {
     return ntux_syscall3(INT80_NET_DEBUG, (uint64_t)(uintptr_t)out, out_cap, 0);
 }
 
 long sys_net_set_dns(uint32_t ip) {
     return ntux_syscall3(INT80_NET_SET_DNS, (uint64_t)ip, 0, 0);
+}
+
+long sys_tcp_connect(const net_ipv4_address_t* ip, uint16_t port) {
+    uint32_t ip_val = ((uint32_t)ip->bytes[0]<<24)|((uint32_t)ip->bytes[1]<<16)|((uint32_t)ip->bytes[2]<<8)|ip->bytes[3];
+    return ntux_syscall3(INT80_NET_TCP_CONNECT, (uint64_t)ip_val, (uint64_t)port, 0);
+}
+long sys_tcp_send(const void* data, size_t len) {
+    return ntux_syscall3(INT80_NET_TCP_SEND, (uint64_t)(uintptr_t)data, (uint64_t)len, 0);
+}
+long sys_tcp_recv(void* buf, size_t max_len) {
+    return ntux_syscall3(INT80_NET_TCP_RECV, (uint64_t)(uintptr_t)buf, (uint64_t)max_len, 0);
+}
+long sys_tcp_recv_nb(void* buf, size_t max_len) {
+    return ntux_syscall3(INT80_NET_TCP_RECV_NB, (uint64_t)(uintptr_t)buf, (uint64_t)max_len, 0);
+}
+long sys_tcp_close(void) {
+    return ntux_syscall3(INT80_NET_TCP_CLOSE, 0, 0, 0);
+}
+long sys_dns_lookup(const char* hostname, net_ipv4_address_t* out) {
+    return ntux_syscall3(INT80_NET_DNS_LOOKUP, (uint64_t)(uintptr_t)hostname, (uint64_t)(uintptr_t)out, 0);
 }
 
 long sys_deskapi_push(const char* buf, uint64_t len) {

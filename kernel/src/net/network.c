@@ -33,10 +33,11 @@ static uint32_t tcp_owner_pid = 0;
 static err_t tcp_recv_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
     (void)arg; (void)tpcb; (void)err;
     if (p == NULL) {
-        // Connection closed
+        serial_write("[TCP] recv: closed\n");
         tcp_closed = 1;
         return ERR_OK;
     }
+    serial_write("[TCP] recv: data\n");
     if (tcp_recv_queue == NULL) {
         tcp_recv_queue = p;
     } else {
@@ -189,14 +190,19 @@ int network_dhcp_acquire(void) {
     return -1;
 }
 
+extern void serial_write(const char *str);
+extern void itoa_dec(int v, char* buf);
+
 int network_tcp_connect(const ipv4_address_t *ip, uint16_t port) {
-    if (!lwip_initialized) return -1;
+    serial_write("[TCP] connect\n");
+    if (!lwip_initialized) { serial_write("[TCP] lwip NOT init\n"); return -1; }
     
     uint64_t flags = spinlock_acquire_irqsave(&network_lock);
-    if (current_tcp_pcb) tcp_abort(current_tcp_pcb);
+    if (current_tcp_pcb) { serial_write("[TCP] abort old pcb\n"); tcp_abort(current_tcp_pcb); }
     
     current_tcp_pcb = tcp_new();
-    if (!current_tcp_pcb) { spinlock_release_irqrestore(&network_lock, flags); return -1; }
+    if (!current_tcp_pcb) { spinlock_release_irqrestore(&network_lock, flags); serial_write("[TCP] tcp_new FAILED\n"); return -1; }
+    serial_write("[TCP] pcb allocated\n");
 
     extern uint32_t process_get_current_pid(void);
     tcp_owner_pid = process_get_current_pid();
@@ -214,28 +220,31 @@ int network_tcp_connect(const ipv4_address_t *ip, uint16_t port) {
     err_t err = tcp_connect(current_tcp_pcb, &dest_addr, port, tcp_connected_callback);
     spinlock_release_irqrestore(&network_lock, flags);
     
-    if (err != ERR_OK) return -1;
+    if (err != ERR_OK) { serial_write("[TCP] tcp_connect returned error\n"); return -1; }
+    serial_write("[TCP] waiting for connect...\n");
     
     uint32_t start = sys_now();
     asm volatile("sti");
-    while (sys_now() - start < 15000) { // 15 second timeout
+    while (sys_now() - start < 15000) {
         network_process_frames();
         flags = spinlock_acquire_irqsave(&network_lock);
-        if (tcp_connect_done) { spinlock_release_irqrestore(&network_lock, flags); return 0; }
-        if (tcp_connect_error) { spinlock_release_irqrestore(&network_lock, flags); return -1; }
+        if (tcp_connect_done) { spinlock_release_irqrestore(&network_lock, flags); serial_write("[TCP] connected OK\n"); return 0; }
+        if (tcp_connect_error) { spinlock_release_irqrestore(&network_lock, flags); serial_write("[TCP] connect error\n"); return -1; }
         spinlock_release_irqrestore(&network_lock, flags);
         k_delay(10);
     }
+    serial_write("[TCP] connect TIMEOUT\n");
     return -1;
 }
 
 int network_tcp_send(const void *data, size_t len) {
-    if (!current_tcp_pcb) return -1;
+    if (!current_tcp_pcb) { serial_write("[TCP] send: no pcb\n"); return -1; }
     uint64_t flags = spinlock_acquire_irqsave(&network_lock);
     err_t err = tcp_write(current_tcp_pcb, data, len, TCP_WRITE_FLAG_COPY);
-    if (err != ERR_OK) { spinlock_release_irqrestore(&network_lock, flags); return -1; }
-    tcp_output(current_tcp_pcb);
+    if (err != ERR_OK) { serial_write("[TCP] tcp_write failed\n"); spinlock_release_irqrestore(&network_lock, flags); return -1; }
+    err_t out_err = tcp_output(current_tcp_pcb);
     spinlock_release_irqrestore(&network_lock, flags);
+    serial_write("[TCP] send OK\n");
     return (int)len;
 }
 
@@ -276,6 +285,8 @@ int network_tcp_recv_nb(void *buf, size_t max_len) {
     if (!tcp_recv_queue) {
         int ret = tcp_closed ? -2 : 0;
         spinlock_release_irqrestore(&network_lock, flags);
+        if (ret == -2) serial_write("[TCP] recv_nb: closed\n");
+        else if (ret == 0) serial_write("[TCP] recv_nb: no data\n");
         return ret;
     }
     
@@ -288,6 +299,7 @@ int network_tcp_recv_nb(void *buf, size_t max_len) {
     if (current_tcp_pcb) tcp_recved(current_tcp_pcb, (u16_t)copied);
     tcp_recv_queue = remainder;
     spinlock_release_irqrestore(&network_lock, flags);
+    serial_write("[TCP] recv_nb: got data\n");
     return (int)copied;
 }
 
@@ -415,8 +427,14 @@ static void dns_callback(const char *name, const ip_addr_t *ipaddr, void *callba
     }
 }
 
+extern void serial_write(const char *str);
+extern void itoa_hex(uint64_t v, char* buf);
+
 int network_dns_lookup(const char *name, ipv4_address_t *out_ip) {
-    if (!lwip_initialized) return -1;
+    serial_write("[DNS] lookup: ");
+    serial_write(name);
+    serial_write("\n");
+    if (!lwip_initialized) { serial_write("[DNS] lwip NOT initialized\n"); return -1; }
     
     dns_done = 0;
     uint64_t flags = spinlock_acquire_irqsave(&network_lock);
@@ -431,6 +449,7 @@ int network_dns_lookup(const char *name, ipv4_address_t *out_ip) {
         out_ip->bytes[2] = (addr >> 16) & 0xFF;
         out_ip->bytes[3] = (addr >> 24) & 0xFF;
         spinlock_release_irqrestore(&network_lock, flags);
+        serial_write("[DNS] cached OK\n");
         return 0;
     } else if (err == ERR_INPROGRESS) {
         uint32_t start = sys_now();
@@ -445,16 +464,20 @@ int network_dns_lookup(const char *name, ipv4_address_t *out_ip) {
                 out_ip->bytes[2] = (addr >> 16) & 0xFF;
                 out_ip->bytes[3] = (addr >> 24) & 0xFF;
                 spinlock_release_irqrestore(&network_lock, flags);
+                serial_write("[DNS] resolved OK\n");
                 return 0;
             }
             if (dns_done == -1) { 
                 spinlock_release_irqrestore(&network_lock, flags);
-                return -1; 
+                serial_write("[DNS] callback error\n");
+                return -1;
             }
             spinlock_release_irqrestore(&network_lock, flags);
             k_delay(10);
         }
+        serial_write("[DNS] lookup timeout\n");
     }
+    serial_write("[DNS] lookup failed\n");
     return -1;
 }
 

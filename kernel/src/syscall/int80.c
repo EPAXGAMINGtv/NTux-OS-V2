@@ -1761,6 +1761,266 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             return 0;
         }
         /*
+         * HTTP POST request — same as GET but sends a POST with form data.
+         *
+         * Arguments:
+         *   rdi = url
+         *   rsi = output buffer
+         *   rdx = output capacity
+         *   rcx = POST body (null-terminated form-encoded string)
+         *
+         * This implementation uses Content-Type:
+         * application/x-www-form-urlencoded and follows the same
+         * redirect and response parsing logic as the GET handler.
+         */
+        case INT80_NET_HTTP_POST: {
+            const char* url = (const char*)(uintptr_t)regs->rdi;
+            char* out = (char*)(uintptr_t)regs->rsi;
+            uint64_t cap = regs->rdx;
+            const char* body = (const char*)(uintptr_t)regs->rcx;
+            if (!user_cstr_ok(url, 512u) || !out || cap == 0 || cap > 65536u ||
+                !user_ptr_range_ok(out, (size_t)cap) || !body || !user_cstr_ok(body, 4096u)) {
+                regs->rax = (uint64_t)-1;
+                return 0;
+            }
+
+            char* buf = (char*)kmalloc(65537);
+            if (!buf) { regs->rax = -1; return 0; }
+
+            char curr_url[512];
+            strncpy(curr_url, url, sizeof(curr_url) - 1);
+            curr_url[sizeof(curr_url) - 1] = '\0';
+
+            int redirects = 0;
+            int body_len = -1;
+
+            while (redirects < 5) {
+                const char* p = curr_url;
+                int is_https = 0;
+                if (strncmp(p, "https://", 8) == 0) { is_https = 1; p += 8; }
+                else if (strncmp(p, "http://", 7) == 0) p += 7;
+                else { body_len = -1; break; }
+
+                if (is_https) {
+                    const char* msg = "HTTPS not supported.\n";
+                    size_t mlen = strlen(msg);
+                    if (mlen > cap) mlen = cap;
+                    memcpy(out, msg, mlen);
+                    regs->rax = mlen;
+                    kfree(buf);
+                    return 0;
+                }
+
+                char host[128];
+                char path[256];
+                int slash = -1;
+                for (int i = 0; p[i]; i++) {
+                    if (p[i] == '/' && slash < 0) slash = i;
+                }
+                if (slash < 0) {
+                    strncpy(host, p, sizeof(host) - 1);
+                    host[sizeof(host) - 1] = '\0';
+                    path[0] = '/'; path[1] = '\0';
+                } else {
+                    int hlen = slash;
+                    if (hlen > 127) hlen = 127;
+                    memcpy(host, p, (size_t)hlen);
+                    host[hlen] = '\0';
+                    int plen = 0;
+                    for (int i = slash; p[i] && plen < 255; i++) path[plen++] = p[i];
+                    path[plen] = '\0';
+                }
+
+                ipv4_address_t ip;
+                if (parse_ipv4(host, &ip) != 0) {
+                    if (network_dns_lookup(host, &ip) != 0) { body_len = -1; break; }
+                }
+
+                if (network_tcp_connect(&ip, 80) != 0) { body_len = -1; break; }
+
+                size_t body_len_str = strlen(body);
+                char req[1024];
+                int rp = 0;
+                const char* m = "POST ";
+                while (*m && rp < 1000) req[rp++] = *m++;
+                char* pp = path;
+                while (*pp && rp < 1000) req[rp++] = *pp++;
+                const char* v = " HTTP/1.1\r\nHost: ";
+                while (*v && rp < 1000) req[rp++] = *v++;
+                char* hp = host;
+                while (*hp && rp < 1000) req[rp++] = *hp++;
+                const char* h2 = "\r\nUser-Agent: NTux-Browser/1.0\r\nAccept: text/html,*/*;q=0.8\r\nAccept-Language: en\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ";
+                while (*h2 && rp < 1000) req[rp++] = *h2++;
+                char len_str[16];
+                int li = 0;
+                size_t tmp = body_len_str;
+                if (tmp == 0) { len_str[li++] = '0'; }
+                else {
+                    char rev[16];
+                    int ri = 0;
+                    while (tmp > 0) { rev[ri++] = (char)('0' + tmp % 10); tmp /= 10; }
+                    for (int i = ri - 1; i >= 0; i--) len_str[li++] = rev[i];
+                }
+                len_str[li] = '\0';
+                for (int i = 0; len_str[i] && rp < 1000; i++) req[rp++] = len_str[i];
+                const char* h3 = "\r\nConnection: close\r\n\r\n";
+                while (*h3 && rp < 1000) req[rp++] = *h3++;
+                req[rp] = '\0';
+
+                // Send request headers
+                if (network_tcp_send(req, rp) != 0) { network_tcp_close(); body_len = -1; break; }
+                // Send body
+                if (body_len_str > 0) {
+                    if (network_tcp_send(body, body_len_str) != 0) { network_tcp_close(); body_len = -1; break; }
+                }
+
+                int total = 0;
+                int n;
+                while ((n = network_tcp_recv(buf + total, 65536 - total)) > 0) {
+                    total += n;
+                    if (total >= 65536) break;
+                }
+                network_tcp_close();
+
+                if (total <= 0) { body_len = -1; break; }
+                buf[total] = '\0';
+
+                char* hdr_end = NULL;
+                for (int i = 0; i < total - 3; i++) {
+                    if (buf[i] == '\r' && buf[i+1] == '\n' && buf[i+2] == '\r' && buf[i+3] == '\n') {
+                        hdr_end = buf + i;
+                        break;
+                    }
+                }
+                if (!hdr_end) { body_len = -1; break; }
+
+                int status = 0;
+                char* sp = buf;
+                while (*sp && *sp != ' ') sp++;
+                if (*sp == ' ') { sp++; while (*sp >= '0' && *sp <= '9') { status = status * 10 + (*sp - '0'); sp++; } }
+
+                char* body_start = hdr_end + 4;
+                int body_remain = total - (int)(body_start - buf);
+                int content_len = -1;
+                int is_chunked = 0;
+                char* location = NULL;
+
+                char* line = buf;
+                while (line && line < hdr_end) {
+                    char* nl = NULL;
+                    for (int i = 0; line + i < hdr_end; i++) {
+                        if (line[i] == '\r' && line + i + 1 < hdr_end && line[i+1] == '\n') {
+                            nl = line + i;
+                            break;
+                        }
+                    }
+                    if (!nl) break;
+                    *nl = '\0';
+
+                    char* val = line;
+                    while (*val && *val != ':') val++;
+                    if (*val == ':') {
+                        *val = '\0';
+                        val++;
+                        while (*val == ' ') val++;
+
+                        if (strcmp(line, "Content-Length") == 0) content_len = atoi(val);
+                        else if (strcmp(line, "Location") == 0) location = val;
+                        else {
+                            char* low = line;
+                            for (int i = 0; low[i]; i++) if (low[i] >= 'A' && low[i] <= 'Z') low[i] = (char)(low[i] + 32);
+                            if (strcmp(low, "transfer-encoding") == 0 && str_has_ci(val, "chunked")) is_chunked = 1;
+                        }
+                        *val = ':';
+                    }
+                    line = nl + 2;
+                }
+
+                if (status >= 300 && status < 400 && location) {
+                    int loc_len = 0;
+                    while (location[loc_len] && location[loc_len] != '\r' && location[loc_len] != '\n') loc_len++;
+                    location[loc_len] = '\0';
+                    if (location[0] == '/') {
+                        char tmp[512];
+                        int ti = 0;
+                        const char* tsrc = "http://";
+                        while (*tsrc && ti < 510) tmp[ti++] = *tsrc++;
+                        int hi = 0;
+                        while (host[hi] && ti < 510) tmp[ti++] = host[hi++];
+                        int li = 0;
+                        while (location[li] && ti < 510) tmp[ti++] = location[li++];
+                        tmp[ti] = '\0';
+                        strncpy(curr_url, tmp, sizeof(curr_url) - 1);
+                    } else {
+                        strncpy(curr_url, location, sizeof(curr_url) - 1);
+                    }
+                    curr_url[sizeof(curr_url) - 1] = '\0';
+                    redirects++;
+                    continue;
+                }
+
+                if (status >= 200 && status < 300) {
+                    if (is_chunked) {
+                        char* src = body_start;
+                        char* dst = body_start;
+                        int decoded = 0;
+                        while (src < buf + total) {
+                            char* size_end = NULL;
+                            for (int i = 0; src + i < buf + total; i++) {
+                                if (src[i] == '\r' && src + i + 1 <= buf + total && src[i+1] == '\n') {
+                                    size_end = src + i;
+                                    break;
+                                }
+                            }
+                            if (!size_end) break;
+                            *size_end = '\0';
+                            int chunk_sz = 0;
+                            for (char* h = src; *h; h++) {
+                                char c = *h;
+                                chunk_sz <<= 4;
+                                if (c >= '0' && c <= '9') chunk_sz |= (c - '0');
+                                else if (c >= 'a' && c <= 'f') chunk_sz |= (c - 'a' + 10);
+                                else if (c >= 'A' && c <= 'F') chunk_sz |= (c - 'A' + 10);
+                            }
+                            src = size_end + 2;
+                            if (chunk_sz == 0) break;
+                            memmove(dst, src, (size_t)chunk_sz);
+                            dst += chunk_sz;
+                            decoded += chunk_sz;
+                            src += chunk_sz + 2;
+                        }
+                        body_remain = decoded;
+                    } else if (content_len >= 0 && body_remain > content_len) {
+                        body_remain = content_len;
+                    }
+
+                    int copy = body_remain;
+                    if (copy < 0) copy = 0;
+                    if (copy > (int)cap - 1) copy = (int)cap - 1;
+                    if (copy > 0) memcpy(out, body_start, (size_t)copy);
+                    out[copy] = '\0';
+                    body_len = copy;
+                    break;
+                }
+
+                body_len = -1;
+                break;
+            }
+
+            if (body_len < 0) {
+                const char* err = "HTTP POST request failed.\n";
+                size_t elen = strlen(err);
+                if (elen > cap) elen = cap;
+                memcpy(out, err, elen);
+                regs->rax = elen;
+            } else {
+                regs->rax = (uint64_t)body_len;
+            }
+
+            kfree(buf);
+            return 0;
+        }
+        /*
          * Return internal network stack debug statistics as a string.
          * Shows packet counts, initialization status, and IP assignment.
          */
@@ -1809,6 +2069,68 @@ uint64_t syscall_int80_dispatch(int80_regs_t *regs) {
             ip.bytes[2] = (ip_val >> 8) & 0xFF;
             ip.bytes[3] = ip_val & 0xFF;
             regs->rax = (uint64_t)network_set_dns_server(&ip);
+            return 0;
+        }
+        /*
+         * ── Raw TCP / DNS (for ported browser) ─────────────────────────
+         */
+
+        case INT80_NET_TCP_CONNECT: {
+            uint32_t ip_val = (uint32_t)regs->rdi;
+            uint16_t port = (uint16_t)regs->rsi;
+            ipv4_address_t kip;
+            kip.bytes[0] = (ip_val >> 24) & 0xFF;
+            kip.bytes[1] = (ip_val >> 16) & 0xFF;
+            kip.bytes[2] = (ip_val >> 8) & 0xFF;
+            kip.bytes[3] = ip_val & 0xFF;
+            regs->rax = (uint64_t)network_tcp_connect(&kip, port);
+            return 0;
+        }
+        case INT80_NET_TCP_SEND: {
+            const void* data = (const void*)(uintptr_t)regs->rdi;
+            size_t len = (size_t)regs->rsi;
+            if (!data || len == 0 || len > 65536 || !user_ptr_range_ok(data, len)) {
+                regs->rax = (uint64_t)-1; return 0;
+            }
+            regs->rax = (uint64_t)network_tcp_send(data, len);
+            return 0;
+        }
+        case INT80_NET_TCP_RECV: {
+            void* buf = (void*)(uintptr_t)regs->rdi;
+            size_t max_len = (size_t)regs->rsi;
+            if (!buf || max_len == 0 || max_len > 65536 || !user_ptr_range_ok(buf, max_len)) {
+                regs->rax = (uint64_t)-1; return 0;
+            }
+            regs->rax = (uint64_t)network_tcp_recv(buf, max_len);
+            return 0;
+        }
+        case INT80_NET_TCP_CLOSE: {
+            regs->rax = (uint64_t)network_tcp_close();
+            return 0;
+        }
+        case INT80_NET_TCP_RECV_NB: {
+            void* buf = (void*)(uintptr_t)regs->rdi;
+            size_t max_len = (size_t)regs->rsi;
+            if (!buf || max_len == 0 || max_len > 65536 || !user_ptr_range_ok(buf, max_len)) {
+                regs->rax = (uint64_t)-1; return 0;
+            }
+            regs->rax = (uint64_t)network_tcp_recv_nb(buf, max_len);
+            return 0;
+        }
+        case INT80_NET_DNS_LOOKUP: {
+            const char* hostname = (const char*)(uintptr_t)regs->rdi;
+            net_ipv4_address_t* out = (net_ipv4_address_t*)(uintptr_t)regs->rsi;
+            if (!hostname || !user_cstr_ok(hostname, 256) ||
+                !out || !user_ptr_range_ok(out, sizeof(net_ipv4_address_t))) {
+                regs->rax = (uint64_t)-1; return 0;
+            }
+            ipv4_address_t kip;
+            int r = network_dns_lookup(hostname, &kip);
+            if (r == 0) {
+                out->bytes[0] = kip.bytes[0]; out->bytes[1] = kip.bytes[1];
+                out->bytes[2] = kip.bytes[2]; out->bytes[3] = kip.bytes[3];
+            }
+            regs->rax = (uint64_t)r;
             return 0;
         }
         /*

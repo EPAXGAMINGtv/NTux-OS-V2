@@ -14,31 +14,42 @@
 #define IFNAME0 'e'
 #define IFNAME1 'n'
 
+extern void serial_write(const char *str);
+static int tx_count = 0;
+
 static err_t nic_low_level_output(struct netif *netif, struct pbuf *p) {
   (void)netif;
+  tx_count++;
 
   if (p->next == NULL) {
     if (nic_send_packet(p->payload, p->len) != 0) {
+      serial_write("[NIC] tx FAIL\n");
       return ERR_IF;
     }
   } else {
     u8_t buffer[2048];
     u16_t copied = pbuf_copy_partial(p, buffer, 2048, 0);
     if (nic_send_packet(buffer, copied) != 0) {
+      serial_write("[NIC] tx FAIL\n");
       return ERR_IF;
     }
   }
   
   LINK_STATS_INC(link.xmit);
+  if (tx_count <= 20) { serial_write("[NIC] tx OK\n"); }
   return ERR_OK;
 }
+
+extern void serial_write(const char *str);
+static int rx_count = 0;
 
 static void nic_low_level_input(struct netif *netif) {
   u8_t buffer[2048];
   int len;
   
   while ((len = nic_receive_packet(buffer, sizeof(buffer))) > 0) {
-    
+    rx_count++;
+    if (rx_count <= 20) { serial_write("[NIC] rx packet\n"); }
     struct pbuf *p = pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
     if (p != NULL) {
       pbuf_take(p, buffer, len);

@@ -67,6 +67,13 @@ enum {
     INT80_NET_HTTP_GET = 91,
     INT80_NET_DEBUG = 92,
     INT80_NET_SET_DNS = 93,
+    INT80_NET_HTTP_POST = 94,
+    INT80_NET_TCP_CONNECT = 95,
+    INT80_NET_TCP_SEND = 96,
+    INT80_NET_TCP_RECV = 97,
+    INT80_NET_TCP_CLOSE = 98,
+    INT80_NET_DNS_LOOKUP = 99,
+    INT80_NET_TCP_RECV_NB = 152,
     INT80_DESKAPI_PUSH = 100,
     INT80_DESKAPI_POP = 101,
     INT80_GET_MEM_INFO = 110,
@@ -290,8 +297,17 @@ long sys_ioctl(int fd, uint64_t req, void* arg);
 long sys_lseek(int fd, long offset, int whence);
 long sys_net_ping(const char* host, char* out, uint64_t out_cap);
 long sys_net_http_get(const char* url, char* out, uint64_t out_cap);
+long sys_net_http_post(const char* url, const char* body, char* out, uint64_t out_cap);
 long sys_net_debug(char* out, uint64_t out_cap);
 long sys_net_set_dns(uint32_t ip);
+
+typedef struct { uint8_t bytes[4]; } net_ipv4_address_t;
+long sys_tcp_connect(const net_ipv4_address_t* ip, uint16_t port);
+long sys_tcp_send(const void* data, size_t len);
+long sys_tcp_recv(void* buf, size_t max_len);
+long sys_tcp_recv_nb(void* buf, size_t max_len);
+long sys_tcp_close(void);
+long sys_dns_lookup(const char* hostname, net_ipv4_address_t* out);
 long sys_deskapi_push(const char* buf, uint64_t len);
 long sys_deskapi_pop(char* out, uint64_t cap, uint64_t* out_len);
 long sys_get_mem_info(ntux_mem_info_t* out);

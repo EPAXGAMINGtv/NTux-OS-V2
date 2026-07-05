@@ -152,6 +152,7 @@ enum {
     INT80_NET_HTTP_GET = 91,
     INT80_NET_DEBUG = 92,
     INT80_NET_SET_DNS = 93,
+    INT80_NET_HTTP_POST = 94,
     INT80_DESKAPI_PUSH = 100,
     INT80_DESKAPI_POP = 101,
     INT80_GET_MEM_INFO = 110,
@@ -186,7 +187,15 @@ enum {
     INT80_AUDIO_STATUS = 143,
     INT80_UMALLOC = 150,
     INT80_UFREE = 151,
+    /* Raw TCP / DNS for browser port */
+    INT80_NET_TCP_CONNECT = 95,
+    INT80_NET_TCP_SEND = 96,
+    INT80_NET_TCP_RECV = 97,
+    INT80_NET_TCP_CLOSE = 98,
+    INT80_NET_TCP_RECV_NB = 152,
+    INT80_NET_DNS_LOOKUP = 99,
 };
+typedef struct { uint8_t bytes[4]; } net_ipv4_address_t;
 
 typedef struct {
     uint64_t total_bytes;
