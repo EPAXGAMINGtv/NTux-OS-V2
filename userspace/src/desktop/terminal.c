@@ -1167,6 +1167,19 @@ void term_run_command_line(desk_window_t* tw, const char* line_in) {
         g_term_exec_state = 0;
         return;
     }
+    if (strcmp(argv[0], "telnet") == 0) {
+        long tid = sys_task_add_module("telnet");
+        if (tid < 0) tid = desktop_launch_target_tid("/boot/modules/telnet.elf");
+        if (tid >= 0) {
+            if (argc >= 2) term_write_args_for_tid((int)tid, "telnet", argv, 1, argc);
+            if (term_idx >= 0) term_route_register((int)tid, term_idx);
+            term_push_line("[ok] telnet started");
+        } else {
+            term_push_line("[err] telnet failed");
+        }
+        g_term_exec_state = 0;
+        return;
+    }
     if (strcmp(argv[0], "browser") == 0) {
         long tid = sys_task_add_module("browser");
         if (tid < 0) tid = desktop_launch_target_tid("browser.elf");

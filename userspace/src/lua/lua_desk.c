@@ -246,9 +246,22 @@ static void headless_run_script(lua_State *L, const char *path) {
     }
 }
 
+static int read_run_path(char* buf, size_t cap) {
+    uint64_t len;
+    if (sys_fs_exists("/tmp/lua.run") != 1) return -1;
+    if (sys_fs_read_file("/tmp/lua.run", buf, cap, &len) != 0) return -1;
+    if (len >= cap) len = cap - 1;
+    buf[len] = '\0';
+    return 0;
+}
+
 void ntux_user_entry(void) {
     int ac = ntux_argc();
     const char *script = (ac >= 2) ? ntux_arg(1) : 0;
+    char run_path[256];
+    if ((!script || !script[0] || sys_fs_exists(script) != 1) && read_run_path(run_path, sizeof(run_path)) == 0) {
+        script = run_path;
+    }
     if (script && script[0] && sys_fs_exists(script) == 1) {
         lua_State *L = luaL_newstate();
         if (!L) {

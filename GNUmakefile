@@ -170,16 +170,6 @@ userspace:
 
 $(IMAGE_NAME).iso: limine/limine kernel userspace
 	rm -rf iso_root
-	mkdir -p iso_root/bin
-	mkdir -p iso_root/dev
-	mkdir -p iso_root/etc
-	mkdir -p iso_root/home
-	mkdir -p iso_root/lib
-	mkdir -p iso_root/mnt
-	mkdir -p iso_root/sbin
-	mkdir -p iso_root/tmp
-	mkdir -p iso_root/usr
-	mkdir -p iso_root/var
 	mkdir -p iso_root/boot
 	mkdir -p iso_root/boot/recovery
 	mkdir -p iso_root/boot/modules
@@ -216,7 +206,6 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 	cp -v userspace/bin/settings.elf iso_root/boot/modules/settings.elf
 	cp -v userspace/bin/partutil.elf iso_root/boot/modules/partutil.elf
 	cp -v userspace/bin/browser.elf iso_root/boot/modules/browser.elf
-	cp -v userspace/bin/netsurf.elf iso_root/boot/modules/netsurf.elf
 	cp -v userspace/bin/test.elf iso_root/boot/modules/test.elf
 	cp -v userspace/bin/healthcheck.elf iso_root/boot/modules/healthcheck.elf
 	cp -v userspace/bin/paint.elf iso_root/boot/modules/paint.elf
@@ -227,6 +216,7 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 	cp -v userspace/bin/snake.elf iso_root/boot/modules/snake.elf
 	cp -v userspace/bin/lua.elf iso_root/boot/modules/lua.elf
 	cp -v userspace/bin/tcc.elf iso_root/boot/modules/tcc.elf
+	cp -v userspace/bin/telnet.elf iso_root/boot/modules/telnet.elf
 	# Auto-catch any extra user ELFs not explicitly listed above
 	for f in userspace/bin/*.elf; do \
 		name=$$(basename "$$f"); \
@@ -235,9 +225,7 @@ $(IMAGE_NAME).iso: limine/limine kernel userspace
 		fi; \
 	done
 	# Copy all .elf modules to /bin so they appear in the live filesystem
-	for f in iso_root/boot/modules/*.elf; do \
-		cp -v "$$f" iso_root/bin/; \
-	done
+
 	cp -v userspace/src/tinycc/examples/ex1.c iso_root/boot/modules/tcc_example.c
 	@if [ -d userspace/bin/tcc ]; then cp -rv userspace/bin/tcc/. iso_root/boot/tcc/; else echo "skip: userspace/bin/tcc (missing)"; fi
 	cp -v userspace/src/lua/ntux_tests/autorun.lua iso_root/boot/modules/autorun.lua

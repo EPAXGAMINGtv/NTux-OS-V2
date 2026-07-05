@@ -52,6 +52,9 @@ typedef struct thread {
     struct thread* wl_next;
     struct thread* wl_prev;
     uint8_t wl_queued;
+    /* FPU/SSE save area (must be 16-byte aligned for fxsave/fxrstor).
+       Place at end to minimise struct layout disruption. */
+    uint8_t fpu_state[512] __attribute__((aligned(16)));
 } thread_t;
 
 #define MAX_THREADS 1024

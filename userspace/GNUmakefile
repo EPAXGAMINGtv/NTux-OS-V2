@@ -43,7 +43,6 @@ BASE_SNAKE := 0x4D000000
 BASE_HEALTHCHECK := 0x50000000
 BASE_TCC := 0x53000000
 BASE_BROWSER := 0x56000000
-BASE_NETSURF := 0x65000000
 BASE_PAINT := 0x59000000
 BASE_SCREENSAVER := 0x5C000000
 BASE_CALC := 0x5F000000
@@ -53,6 +52,7 @@ BASE_CP := 0x6B000000
 BASE_RM := 0x6E000000
 BASE_FORMAT := 0x71000000
 BASE_VIM := 0x74000000
+BASE_TELNET := 0x77000000
 
 
 LDFLAGS_DESKTOP := $(LDFLAGS) --defsym=USER_BASE=$(BASE_DESKTOP)
@@ -93,7 +93,7 @@ LDFLAGS_CP := $(LDFLAGS) --defsym=USER_BASE=$(BASE_CP)
 LDFLAGS_RM := $(LDFLAGS) --defsym=USER_BASE=$(BASE_RM)
 LDFLAGS_FORMAT := $(LDFLAGS) --defsym=USER_BASE=$(BASE_FORMAT)
 LDFLAGS_VIM := $(LDFLAGS) --defsym=USER_BASE=$(BASE_VIM)
-LDFLAGS_NETSURF := $(LDFLAGS) --defsym=USER_BASE=$(BASE_NETSURF)
+LDFLAGS_TELNET := $(LDFLAGS) --defsym=USER_BASE=$(BASE_TELNET)
 
 
 OUT_DIR := bin
@@ -141,6 +141,7 @@ FONTVIEW_SRC := src/fontview/fontview_main.c
 CP_SRC := src/tools/cp.c
 RM_SRC := src/tools/rm.c
 FORMAT_SRC := src/tools/format.c
+TELNET_SRC := src/telnet/telnet.c
 
 
 
@@ -300,6 +301,7 @@ IMGDECODE_ALL_SRC := $(RUNTIME_SRC) $(IMGDECODE_SRC)
 CP_ALL_SRC := $(RUNTIME_SRC) $(CP_SRC)
 RM_ALL_SRC := $(RUNTIME_SRC) $(RM_SRC)
 FORMAT_ALL_SRC := $(RUNTIME_SRC) $(FORMAT_SRC)
+TELNET_ALL_SRC := $(RUNTIME_SRC) $(TELNET_SRC)
 
 HELLO_OBJ := $(patsubst %.c,$(OBJ_DIR)/hello/%.o,$(filter %.c,$(HELLO_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/hello/%.o,$(filter %.cpp,$(HELLO_ALL_SRC)))
 INSTALLER_OBJ := $(patsubst %.c,$(OBJ_DIR)/installer/%.o,$(filter %.c,$(INSTALLER_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/installer/%.o,$(filter %.cpp,$(INSTALLER_ALL_SRC)))
@@ -339,6 +341,7 @@ IMGDECODE_OBJ := $(patsubst %.c,$(OBJ_DIR)/imgdecode/%.o,$(filter %.c,$(IMGDECOD
 CP_OBJ := $(patsubst %.c,$(OBJ_DIR)/cp/%.o,$(filter %.c,$(CP_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/cp/%.o,$(filter %.cpp,$(CP_ALL_SRC)))
 RM_OBJ := $(patsubst %.c,$(OBJ_DIR)/rm/%.o,$(filter %.c,$(RM_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/rm/%.o,$(filter %.cpp,$(RM_ALL_SRC)))
 FORMAT_OBJ := $(patsubst %.c,$(OBJ_DIR)/format/%.o,$(filter %.c,$(FORMAT_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/format/%.o,$(filter %.cpp,$(FORMAT_ALL_SRC)))
+TELNET_OBJ := $(patsubst %.c,$(OBJ_DIR)/telnet/%.o,$(filter %.c,$(TELNET_ALL_SRC))) $(patsubst %.cpp,$(OBJ_DIR)/telnet/%.o,$(filter %.cpp,$(TELNET_ALL_SRC)))
 
 
 
@@ -359,7 +362,7 @@ TCC_INCLUDE_STAMP := $(TCC_INC_DIR)/.stamp
 
 .PHONY: all clean
 
-ALL_TARGETS := $(OUT_DIR)/hello.elf $(OUT_DIR)/konsole.elf $(OUT_DIR)/hellokonsole.elf $(OUT_DIR)/installer.elf $(OUT_DIR)/installer_term.elf $(OUT_DIR)/desktop.elf $(OUT_DIR)/terminal.elf $(OUT_DIR)/deskdemo.elf $(OUT_DIR)/screensaver.elf $(OUT_DIR)/login.elf $(OUT_DIR)/doom.elf $(OUT_DIR)/epaxfetch.elf $(OUT_DIR)/tetris.elf $(OUT_DIR)/taskmgr.elf $(OUT_DIR)/deskconsole.elf $(OUT_DIR)/explorer.elf $(OUT_DIR)/editor.elf $(OUT_DIR)/bench.elf $(OUT_DIR)/imgview.elf $(OUT_DIR)/objview.elf $(OUT_DIR)/flappy.elf $(OUT_DIR)/xeyes.elf $(OUT_DIR)/settings.elf $(OUT_DIR)/partutil.elf $(OUT_DIR)/test.elf $(OUT_DIR)/snake.elf $(OUT_DIR)/healthcheck.elf $(OUT_DIR)/lua.elf $(OUT_DIR)/tcc.elf $(OUT_DIR)/browser.elf $(OUT_DIR)/paint.elf $(OUT_DIR)/calc.elf $(OUT_DIR)/imgdecode.elf $(OUT_DIR)/netsurf.elf $(OUT_DIR)/ntuxpkg.elf $(OUT_DIR)/fontview.elf $(OUT_DIR)/cp.elf $(OUT_DIR)/rm.elf $(OUT_DIR)/format.elf $(TCC_LIBC_A) $(TCC_LIBTCC1_A) $(TCC_CRT1_OBJ) $(TCC_CRTI_OBJ) $(TCC_CRTN_OBJ) $(TCC_INCLUDE_STAMP)
+ALL_TARGETS := $(OUT_DIR)/hello.elf $(OUT_DIR)/konsole.elf $(OUT_DIR)/hellokonsole.elf $(OUT_DIR)/installer.elf $(OUT_DIR)/installer_term.elf $(OUT_DIR)/desktop.elf $(OUT_DIR)/terminal.elf $(OUT_DIR)/deskdemo.elf $(OUT_DIR)/screensaver.elf $(OUT_DIR)/login.elf $(OUT_DIR)/doom.elf $(OUT_DIR)/epaxfetch.elf $(OUT_DIR)/tetris.elf $(OUT_DIR)/taskmgr.elf $(OUT_DIR)/deskconsole.elf $(OUT_DIR)/explorer.elf $(OUT_DIR)/editor.elf $(OUT_DIR)/bench.elf $(OUT_DIR)/imgview.elf $(OUT_DIR)/objview.elf $(OUT_DIR)/flappy.elf $(OUT_DIR)/xeyes.elf $(OUT_DIR)/settings.elf $(OUT_DIR)/partutil.elf $(OUT_DIR)/test.elf $(OUT_DIR)/snake.elf $(OUT_DIR)/healthcheck.elf $(OUT_DIR)/lua.elf $(OUT_DIR)/tcc.elf $(OUT_DIR)/browser.elf $(OUT_DIR)/paint.elf $(OUT_DIR)/calc.elf $(OUT_DIR)/imgdecode.elf $(OUT_DIR)/ntuxpkg.elf $(OUT_DIR)/fontview.elf $(OUT_DIR)/cp.elf $(OUT_DIR)/rm.elf $(OUT_DIR)/format.elf $(OUT_DIR)/telnet.elf $(TCC_LIBC_A) $(TCC_LIBTCC1_A) $(TCC_CRT1_OBJ) $(TCC_CRTI_OBJ) $(TCC_CRTN_OBJ) $(TCC_INCLUDE_STAMP)
 ifeq ($(HAS_CXX),1)
 ALL_TARGETS += $(OUT_DIR)/cpphello.elf
 endif
@@ -518,6 +521,10 @@ $(OUT_DIR)/rm.elf: $(RM_OBJ) linker.ld
 $(OUT_DIR)/format.elf: $(FORMAT_OBJ) linker.ld
 	@mkdir -p $(OUT_DIR)
 	$(LD) $(LDFLAGS_FORMAT) $(FORMAT_OBJ) -o $@
+
+$(OUT_DIR)/telnet.elf: $(TELNET_OBJ) linker.ld
+	@mkdir -p $(OUT_DIR)
+	$(LD) $(LDFLAGS_TELNET) $(TELNET_OBJ) -o $@
 
 # ntuxpkg — external repo (cloned on demand)
 NTUXPKG_DIR := ntuxpkg
@@ -791,61 +798,6 @@ $(OBJ_DIR)/installer_term/src/installer/installer_term.o: src/installer/installe
 clean:
 	rm -rf $(OUT_DIR) $(OBJ_DIR) $(NTUXPKG_DIR)
 
-# ===== NetSurf browser =====
-NETSURF_NET_DIR := src/netsurf
-
-NETSURF_SRC := $(shell find $(NETSURF_NET_DIR) -name '*.c' ! -path "*/frontends/amiga/*" ! -path "*/frontends/atari/*" ! -path "*/frontends/beos/*" ! -path "*/frontends/emscripten/*" ! -path "*/frontends/framebuffer/*" ! -path "*/frontends/gtk/*" ! -path "*/frontends/haiku/*" ! -path "*/frontends/monkey/*" ! -path "*/frontends/qt/*" ! -path "*/frontends/riscos/*" ! -path "*/frontends/windows/*" ! -path "*/test/*" ! -path "*/tools/*" ! -path "*/.git/*" | sort)
-NETSURF_STUB_SRC := $(NETSURF_NET_DIR)/lib_stubs/src/stubs_gen.c
-
-NETSURF_CPPFLAGS := $(CPPFLAGS) \
-    -include $(NETSURF_NET_DIR)/ntux/compat.h \
-    -I $(NETSURF_NET_DIR)/include \
-    -I $(NETSURF_NET_DIR) \
-    -I $(NETSURF_NET_DIR)/lib_stubs/include \
-    -I $(NETSURF_NET_DIR)/frontends \
-    -I $(NETSURF_NET_DIR)/content/handlers \
-    -I $(NETSURF_NET_DIR)/content/fetchers \
-    -I $(NETSURF_NET_DIR)/content \
-    -I $(NETSURF_NET_DIR)/desktop \
-    -I $(NETSURF_NET_DIR)/utils \
-    -I $(NETSURF_NET_DIR)/content/handlers/css \
-    -I $(NETSURF_NET_DIR)/content/handlers/html \
-    -I $(NETSURF_NET_DIR)/content/handlers/image \
-    -I $(NETSURF_NET_DIR)/content/handlers/javascript \
-    -I $(NETSURF_NET_DIR)/content/handlers/text \
-    -I $(NETSURF_NET_DIR)/utils/http \
-    -I $(NETSURF_NET_DIR)/utils/nsurl \
-    -I $(NETSURF_NET_DIR)/content/handlers/javascript/duktape \
-    -D__ntux__ \
-    -DNETSURF_HOMEPAGE='"about:blank"' \
-    -DNETSURF_UA_FORMAT_STRING='"NTux"' \
-    -DNETSURF_LOG_LEVEL=INFO \
-    -DNETSURF_BUILTIN_LOG_FILTER='"level:WARNING"' \
-    -DNETSURF_BUILTIN_VERBOSE_FILTER='"level:VERBOSE"'
-
-# NetSurf files (compiled with special flags) + libc (compiled with standard flags)
-NETSURF_ALL_SRC := $(LIBC_SRC) $(NETSURF_SRC) $(NETSURF_STUB_SRC)
-
-# Object files: netsurf under netsurf/, libc under netsurf_libc/
-NETSURF_NET_OBJ := $(patsubst %.c,$(OBJ_DIR)/netsurf/%.o,$(NETSURF_SRC) $(NETSURF_STUB_SRC))
-NETSURF_LIBC_OBJ := $(patsubst %.c,$(OBJ_DIR)/netsurf_libc/%.o,$(LIBC_SRC))
-NETSURF_OBJ := $(NETSURF_NET_OBJ) $(NETSURF_LIBC_OBJ)
-
-# Pattern rule for netsurf code
-$(OBJ_DIR)/netsurf/%.o: %.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(NETSURF_CPPFLAGS) -c $< -o $@
-
-# Pattern rule for libc code (netsurf build)
-$(OBJ_DIR)/netsurf_libc/%.o: %.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
-
-$(OUT_DIR)/netsurf.elf: $(NETSURF_OBJ) linker.ld
-	@mkdir -p $(OUT_DIR)
-	$(LD) -r --allow-multiple-definition -m elf_x86_64 -o $(OBJ_DIR)/netsurf_combined.o $(NETSURF_OBJ)
-	$(LD) $(LDFLAGS_NETSURF) --allow-multiple-definition $(OBJ_DIR)/netsurf_combined.o -o $@
-
 $(OBJ_DIR)/fontview/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
@@ -863,5 +815,13 @@ $(OBJ_DIR)/rm/%.o: %.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 $(OBJ_DIR)/format/%.o: %.c
+
+$(OBJ_DIR)/telnet/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+$(OBJ_DIR)/telnet/%.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
