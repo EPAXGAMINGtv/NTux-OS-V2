@@ -815,6 +815,8 @@ $(OBJ_DIR)/rm/%.o: %.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 $(OBJ_DIR)/format/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 $(OBJ_DIR)/telnet/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -823,5 +825,3 @@ $(OBJ_DIR)/telnet/%.o: %.c
 $(OBJ_DIR)/telnet/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
