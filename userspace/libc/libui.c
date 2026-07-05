@@ -44,7 +44,7 @@ void ui_draw_string_scaled(ui_window_t win,int x,int y,const char*str,uint32_t c
     window_draw_text(win,x,y,color,str);
 }
 void ui_draw_image(ui_window_t win,int x,int y,int w,int h,const uint32_t*pixels){
-    window_set_image_raw(win,w,h,4,(const char*)pixels,(uint32_t)(w*h*4));
+    window_draw_image_raw(win,x,y,w,h,4,(const char*)pixels,(uint32_t)(w*h*4));
 }
 int ui_get_string_width(const char*str){
     if(!str) return 0;
@@ -111,21 +111,21 @@ int ui_get_event(ui_window_t win,gui_event_t*ev){
     long ch;
     int found=0;
     while((ch=sys_getchar())>0 && !found){
-        /* Store extras in queue */
-        if(found || event_queue_tail == event_queue_head){
-            int next = (event_queue_tail+1)&127;
-            if(next != event_queue_head){
-                event_queue[event_queue_tail].type = GUI_EVENT_KEY;
-                event_queue[event_queue_tail].arg1 = (int)ch;
-                event_queue[event_queue_tail].arg4 = (uint32_t)ch;
-                event_queue_tail = next;
-            }
-        }
         if(!found){
             ev->type = GUI_EVENT_KEY;
             ev->arg1 = (int)ch;
             ev->arg4 = (uint32_t)ch;
             found = 1;
+        }
+    }
+    /* Drain extra chars from buffer into queue */
+    while((ch=sys_getchar())>0){
+        int next = (event_queue_tail+1)&127;
+        if(next != event_queue_head){
+            event_queue[event_queue_tail].type = GUI_EVENT_KEY;
+            event_queue[event_queue_tail].arg1 = (int)ch;
+            event_queue[event_queue_tail].arg4 = (uint32_t)ch;
+            event_queue_tail = next;
         }
     }
     if(found) return 1;

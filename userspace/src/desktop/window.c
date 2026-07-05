@@ -220,9 +220,20 @@ static void img_debug_log(const char* path, int rc) {
 
 void desk_window_set_image(desk_window_t* w, const char* path, int desired_channels) {
     if (!w) return;
+    int slot = (int)(w - g_windows);
     if (w->image_data) {
         free(w->image_data);
         w->image_data = 0;
+    }
+    if (slot >= 0 && slot < DESK_MAX_WINDOWS) {
+        pos_image_t* ip = g_window_images[slot];
+        while (ip) {
+            pos_image_t* next = ip->next;
+            free(ip->data);
+            free(ip);
+            ip = next;
+        }
+        g_window_images[slot] = NULL;
     }
     w->image_enabled = 0;
     w->image_w = 0;

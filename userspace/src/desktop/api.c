@@ -23,6 +23,8 @@ void desktop_rescan_icons(void);
 void desktop_open_file_picker(const window_msg_t* msg);
 void desktop_open_message_box(const window_msg_t* msg);
 
+pos_image_t* g_window_images[DESK_MAX_WINDOWS] = {NULL};
+
 static void deskapi_copy_text(char* dst, size_t cap, const char* src) {
     if (!dst || cap == 0) return;
     if (!src) {
@@ -495,6 +497,7 @@ static void deskapi_handle_image_raw(const uint8_t* raw, uint64_t len) {
 
     desk_window_t* w = window_find_by_id(header.id);
     if (!w) return;
+
     if ((header.flags & WINDOW_IMAGE_FLAG_ALLOC) || !w->image_data ||
         w->image_w != header.w || w->image_h != header.h || w->image_channels != header.channels) {
         if (w->image_data) free(w->image_data);
@@ -508,9 +511,74 @@ static void deskapi_handle_image_raw(const uint8_t* raw, uint64_t len) {
         w->image_channels = (uint8_t)header.channels;
         w->image_enabled = 1;
     }
-
     const uint8_t* src = raw + sizeof(window_image_msg_t);
     memcpy(w->image_data + header.offset, src, header.data_len);
+    desktop_mark_dirty();
+}
+
+static void deskapi_handle_draw_image(const uint8_t* raw, uint64_t len) {
+    if (!raw || len < sizeof(window_image_msg_t)) return;
+    window_image_msg_t header;
+    memcpy(&header, raw, sizeof(header));
+    if (header.size > len || header.size < sizeof(window_image_msg_t)) return;
+    if (header.data_len + sizeof(window_image_msg_t) > header.size) return;
+    if (header.w == 0 || header.h == 0) return;
+    if (header.channels != 3 && header.channels != 4) return;
+    uint64_t total = (uint64_t)header.w * (uint64_t)header.h * (uint64_t)header.channels;
+    if (total == 0 || total > (128u * 1024u * 1024u)) return;
+    if ((uint64_t)header.offset + (uint64_t)header.data_len > total) return;
+
+    desk_window_t* w = window_find_by_id(header.id);
+    if (!w) return;
+    int slot = (int)(w - g_windows);
+    if (slot < 0 || slot >= DESK_MAX_WINDOWS) return;
+
+    if (header.flags & WINDOW_IMAGE_FLAG_ALLOC) {
+        pos_image_t* img = (pos_image_t*)malloc(sizeof(pos_image_t));
+        if (!img) return;
+        img->next = NULL;
+        img->w = (uint16_t)header.w;
+        img->h = (uint16_t)header.h;
+        img->channels = (uint8_t)header.channels;
+        img->x = header.image_x;
+        img->y = header.image_y;
+        img->data = (uint8_t*)malloc((size_t)total);
+        if (!img->data) { free(img); return; }
+        const uint8_t* src = raw + sizeof(window_image_msg_t);
+        memcpy(img->data + header.offset, src, header.data_len);
+        img->next = g_window_images[slot];
+        g_window_images[slot] = img;
+        w->image_enabled = 1;
+    } else {
+        for (pos_image_t* p = g_window_images[slot]; p; p = p->next) {
+            if (p->x == header.image_x && p->y == header.image_y) {
+                const uint8_t* src = raw + sizeof(window_image_msg_t);
+                memcpy(p->data + header.offset, src, header.data_len);
+                break;
+            }
+        }
+    }
+    desktop_mark_dirty();
+}
+
+static void deskapi_handle_clear_image(const window_msg_t* msg) {
+    desk_window_t* w = window_find_by_id(msg->id);
+    if (!w) return;
+    int slot = (int)(w - g_windows);
+    if (slot < 0 || slot >= DESK_MAX_WINDOWS) return;
+    if (w->image_data) { free(w->image_data); w->image_data = NULL; }
+    pos_image_t* p = g_window_images[slot];
+    while (p) {
+        pos_image_t* next = p->next;
+        free(p->data);
+        free(p);
+        p = next;
+    }
+    g_window_images[slot] = NULL;
+    w->image_enabled = 0;
+    w->image_w = 0;
+    w->image_h = 0;
+    w->image_channels = 0;
     desktop_mark_dirty();
 }
 
@@ -531,6 +599,18 @@ int window_ipc_process(void) {
         }
         if (cmd == WINDOW_CMD_SET_IMAGE_RAW) {
             deskapi_handle_image_raw(raw, len);
+            continue;
+        }
+        if (cmd == WINDOW_CMD_DRAW_IMAGE) {
+            deskapi_handle_draw_image(raw, len);
+            continue;
+        }
+        if (cmd == WINDOW_CMD_CLEAR_IMAGE) {
+            if (len >= sizeof(window_msg_t)) {
+                window_msg_t msg;
+                memcpy(&msg, raw, sizeof(msg));
+                deskapi_handle_clear_image(&msg);
+            }
             continue;
         }
         if (len < sizeof(window_msg_t)) continue;

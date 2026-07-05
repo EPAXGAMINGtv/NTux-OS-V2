@@ -389,7 +389,8 @@ int window_set_image(window_t id, const char* path, int desired_channels) {
     return window_send(&msg);
 }
 
-int window_set_image_raw(window_t id, int w, int h, int channels, const void* data, uint32_t len) {
+int window_set_image_raw(window_t id, int x, int y, int w, int h, int channels, const void* data, uint32_t len) {
+    (void)x; (void)y;
     if (!data || len == 0 || w <= 0 || h <= 0) return -1;
     size_t header = sizeof(window_image_msg_t);
     if (header >= WINDOW_MAX_MSG) return -1;
@@ -409,13 +410,51 @@ int window_set_image_raw(window_t id, int w, int h, int channels, const void* da
         msg->offset = offset;
         msg->data_len = chunk;
         msg->flags = (offset == 0) ? WINDOW_IMAGE_FLAG_ALLOC : 0u;
-        msg->reserved = 0;
+        msg->image_x = 0;
+        msg->image_y = 0;
         msg->size = (uint32_t)(header + chunk);
         memcpy(msg->data, src + offset, chunk);
         if (window_send_raw(msg, msg->size) != 0) return -1;
         offset += chunk;
     }
     return 0;
+}
+
+int window_draw_image_raw(window_t id, int x, int y, int w, int h, int channels, const void* data, uint32_t len) {
+    if (!data || len == 0 || w <= 0 || h <= 0) return -1;
+    size_t header = sizeof(window_image_msg_t);
+    if (header >= WINDOW_MAX_MSG) return -1;
+    size_t max_payload = WINDOW_MAX_MSG - header;
+    const uint8_t* src = (const uint8_t*)data;
+    uint32_t offset = 0;
+    static uint8_t buf[WINDOW_MAX_MSG];
+
+    while (offset < len) {
+        uint32_t chunk = (uint32_t)((len - offset) > max_payload ? max_payload : (len - offset));
+        window_image_msg_t* msg = (window_image_msg_t*)buf;
+        msg->cmd = WINDOW_CMD_DRAW_IMAGE;
+        msg->id = id;
+        msg->w = (uint32_t)w;
+        msg->h = (uint32_t)h;
+        msg->channels = (uint32_t)channels;
+        msg->offset = offset;
+        msg->data_len = chunk;
+        msg->flags = (offset == 0) ? WINDOW_IMAGE_FLAG_ALLOC : 0u;
+        msg->image_x = (int16_t)x;
+        msg->image_y = (int16_t)y;
+        msg->size = (uint32_t)(header + chunk);
+        memcpy(msg->data, src + offset, chunk);
+        if (window_send_raw(msg, msg->size) != 0) return -1;
+        offset += chunk;
+    }
+    return 0;
+}
+
+int window_clear_image(window_t id) {
+    window_msg_t msg;
+    window_init_msg(&msg, WINDOW_CMD_CLEAR_IMAGE);
+    msg.id = id;
+    return window_send(&msg);
 }
 
 int window_set_icon(window_t id, const char* path) {

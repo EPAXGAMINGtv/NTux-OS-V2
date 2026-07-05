@@ -77,7 +77,7 @@ void ntux_redraw_window(struct gui_window *gw)
 
 	browser_window_redraw(gw->bw, 0, 0, &clip, &ctx);
 
-	window_set_image_raw(gw->ntux_win, gw->width, gw->height, 4,
+	window_set_image_raw(gw->ntux_win, 0, 0, gw->width, gw->height, 4,
 			     (const char *)buf, bufsize);
 }
 

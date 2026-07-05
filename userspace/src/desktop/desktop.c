@@ -754,6 +754,16 @@ void desktop_window_cleanup(int idx, int kill_owner) {
         w->image_data = 0;
         w->image_enabled = 0;
     }
+    if (idx >= 0 && idx < DESK_MAX_WINDOWS) {
+        pos_image_t* ip = g_window_images[idx];
+        while (ip) {
+            pos_image_t* next = ip->next;
+            free(ip->data);
+            free(ip);
+            ip = next;
+        }
+        g_window_images[idx] = NULL;
+    }
     if (w->icon_data) {
         free(w->icon_data);
         w->icon_data = 0;
@@ -1034,35 +1044,10 @@ static uint32_t blend_rgba(uint32_t bg, uint8_t r, uint8_t g, uint8_t b, uint8_t
     return (rr << 16) | (rg << 8) | rb;
 }
 
-static void draw_window_image(const desk_window_t* w, int ox, int oy) {
-    if (!w || !w->image_enabled || !w->image_data) return;
-    int body_x = ox + 2;
-    int body_y = oy + DESK_TITLEBAR_H + 1;
-    int body_w = w->w - 4;
-    int body_h = w->h - DESK_TITLEBAR_H - 3;
-    if (body_w <= 0 || body_h <= 0) return;
-    uint32_t bg = w->bg ? w->bg : desk_theme()->window_fill;
-    fill_rect(body_x, body_y, body_w, body_h, bg);
-
-    int src_w = (int)w->image_w;
-    int src_h = (int)w->image_h;
-    if (src_w <= 0 || src_h <= 0) return;
-
-    float sx = (float)body_w / (float)src_w;
-    float sy = (float)body_h / (float)src_h;
-    float scale = (sx < sy) ? sx : sy;
-    int dst_w = (int)((float)src_w * scale);
-    int dst_h = (int)((float)src_h * scale);
-    if (dst_w < 1) dst_w = 1;
-    if (dst_h < 1) dst_h = 1;
-    int dx = body_x + (body_w - dst_w) / 2;
-    int dy = body_y + (body_h - dst_h) / 2;
-
-    const uint8_t* src = w->image_data;
-    int ch = w->image_channels == 4 ? 4 : 3;
+static void draw_image_data(int dx, int dy, int dst_w, int dst_h, int src_w, int src_h, const uint8_t* data, int ch, uint32_t bg) {
     for (int y = 0; y < dst_h; ++y) {
         int syi = y * src_h / dst_h;
-        const uint8_t* row = src + (size_t)syi * (size_t)src_w * (size_t)ch;
+        const uint8_t* row = data + (size_t)syi * (size_t)src_w * (size_t)ch;
         for (int x = 0; x < dst_w; ++x) {
             int sxi = x * src_w / dst_w;
             const uint8_t* px = row + (size_t)sxi * (size_t)ch;
@@ -1071,6 +1056,45 @@ static void draw_window_image(const desk_window_t* w, int ox, int oy) {
             uint8_t b = px[2];
             uint32_t c = (ch == 4) ? blend_rgba(bg, r, g, b, px[3]) : ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
             put_px(dx + x, dy + y, c);
+        }
+    }
+}
+
+static void draw_window_image(const desk_window_t* w, int ox, int oy) {
+    if (!w || !w->image_enabled) return;
+    int body_x = ox + 2;
+    int body_y = oy + DESK_TITLEBAR_H + 1;
+    int body_w = w->w - 4;
+    int body_h = w->h - DESK_TITLEBAR_H - 3;
+    if (body_w <= 0 || body_h <= 0) return;
+    uint32_t bg = w->bg ? w->bg : desk_theme()->window_fill;
+    int slot = (int)(w - g_windows);
+
+    pos_image_t* list = (slot >= 0 && slot < DESK_MAX_WINDOWS) ? g_window_images[slot] : NULL;
+    for (pos_image_t* p = list; p; p = p->next) {
+        int dx = body_x + p->x;
+        int dy = body_y + p->y;
+        int ch = p->channels == 4 ? 4 : 3;
+        draw_image_data(dx, dy, p->w, p->h, p->w, p->h, p->data, ch, bg);
+    }
+
+    if (w->image_data) {
+        int src_w = (int)w->image_w;
+        int src_h = (int)w->image_h;
+        if (src_w > 0 && src_h > 0) {
+            int dst_w, dst_h, dx, dy;
+            fill_rect(body_x, body_y, body_w, body_h, bg);
+            float sx = (float)body_w / (float)src_w;
+            float sy = (float)body_h / (float)src_h;
+            float scale = (sx < sy) ? sx : sy;
+            dst_w = (int)((float)src_w * scale);
+            dst_h = (int)((float)src_h * scale);
+            if (dst_w < 1) dst_w = 1;
+            if (dst_h < 1) dst_h = 1;
+            dx = body_x + (body_w - dst_w) / 2;
+            dy = body_y + (body_h - dst_h) / 2;
+            int ch = w->image_channels == 4 ? 4 : 3;
+            draw_image_data(dx, dy, dst_w, dst_h, src_w, src_h, w->image_data, ch, bg);
         }
     }
 }
@@ -3643,6 +3667,9 @@ static void draw_window(desk_window_t* w, int focused) {
     } else if (w->settings_app) {
         draw_settings_window(w);
     } else if (w->image_enabled) {
+        int slot = (int)(w - g_windows);
+        if (slot >= 0 && slot < DESK_MAX_WINDOWS && g_window_images[slot] && w->canvas_enabled)
+            draw_window_canvas(w, ox, oy, oy + DESK_TITLEBAR_H + 1);
         draw_window_image(w, ox, oy);
     } else if (w->canvas_enabled) {
         draw_window_canvas(w, ox, oy, oy + DESK_TITLEBAR_H + 1);

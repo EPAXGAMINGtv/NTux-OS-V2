@@ -72,7 +72,9 @@ int window_draw_dropdown_list(window_t id, int x, int y, int w, int item_h, int 
 int window_present(window_t id);
 
 int window_set_image(window_t id, const char* path, int desired_channels);
-int window_set_image_raw(window_t id, int w, int h, int channels, const void* data, uint32_t len);
+int window_set_image_raw(window_t id, int x, int y, int w, int h, int channels, const void* data, uint32_t len);
+int window_draw_image_raw(window_t id, int x, int y, int w, int h, int channels, const void* data, uint32_t len);
+int window_clear_image(window_t id);
 int window_set_icon(window_t id, const char* path);
 int window_get_input_state(window_t id, window_input_state_t* out);
 int window_should_close(window_t id);

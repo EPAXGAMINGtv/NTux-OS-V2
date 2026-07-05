@@ -68,6 +68,16 @@ typedef struct {
 
 typedef struct desk_browser_state desk_browser_state_t;
 
+typedef struct pos_image {
+    struct pos_image* next;
+    uint8_t* data;
+    uint16_t w;
+    uint16_t h;
+    uint8_t channels;
+    int16_t x;
+    int16_t y;
+} pos_image_t;
+
 typedef struct {
     uint64_t id;
     int x;

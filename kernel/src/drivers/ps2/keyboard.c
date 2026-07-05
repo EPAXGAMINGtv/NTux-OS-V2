@@ -63,6 +63,7 @@ __attribute__((unused)) static void kbd_ps2_write_config(uint8_t cfg) {
 }
 
 static void keyboard_apply_scancode(uint8_t key, bool released, bool extended) {
+    uint8_t was_down = (key < 128) ? key_down[key] : 0;
     if (key < 128) {
     key_down[key] = released ? 0 : 1;
     input_evdev_push_key(key, released ? 0 : 1);
@@ -83,7 +84,7 @@ static void keyboard_apply_scancode(uint8_t key, bool released, bool extended) {
     if (key == 0x2A || key == 0x36) shift_pressed = !released;
     if (key == 0x1D) ctrl_pressed = !released;
     if (key == 0x38) alt_pressed = !released;
-    if (!released) {
+    if (!released && !was_down) {
         char c = shift_pressed ? g_scancode_ascii_shift[key] : g_scancode_ascii[key];
         if (ctrl_pressed) {
             if (c >= 'a' && c <= 'z') {
@@ -180,9 +181,9 @@ void keyboard_init() {
         kprint_error("[KBD] PS/2 keyboard scanning enable failed\n");
     }
 
-    /* Set typematic rate: 500ms delay, ~10.9 chars/sec */
+    /* Set typematic rate: 1000ms delay, ~6.15 chars/sec (max delay) */
     ps2_write_device(1, 0xF3);
-    ps2_write_device(1, 0x2B);
+    ps2_write_device(1, 0x3F);
 
     irq_register_handler(1, keyboard_irq_handler);
     pic_clear_mask(1);

@@ -43,7 +43,9 @@ typedef enum {
     WINDOW_CMD_SET_IMAGE = 32,
     WINDOW_CMD_NOTIFY = 33,
     WINDOW_CMD_SET_ICON = 34,
-    WINDOW_CMD_SET_IMAGE_RAW = 35
+    WINDOW_CMD_SET_IMAGE_RAW = 35,
+    WINDOW_CMD_CLEAR_IMAGE = 36,
+    WINDOW_CMD_DRAW_IMAGE = 37
 } window_cmd_t;
 
 enum {
@@ -103,7 +105,8 @@ typedef struct {
 } window_msg_t;
 
 enum {
-    WINDOW_IMAGE_FLAG_ALLOC = 0x1u
+    WINDOW_IMAGE_FLAG_ALLOC  = 0x1u,
+    WINDOW_IMAGE_FLAG_HAS_POS = 0x2u
 };
 
 typedef struct {
@@ -116,7 +119,8 @@ typedef struct {
     uint32_t offset;
     uint32_t data_len;
     uint32_t flags;
-    uint32_t reserved;
+    int16_t image_x;
+    int16_t image_y;
     uint8_t data[];
 } window_image_msg_t;
 

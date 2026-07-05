@@ -99,7 +99,7 @@ void ntux_user_entry(void) {
         }
     } else {
         if (pixel_bytes > 0) {
-            (void)window_set_image_raw(win_id, img.width, img.height, img.channels, img.data, (uint32_t)pixel_bytes);
+            (void)window_set_image_raw(win_id, 0, 0, img.width, img.height, img.channels, img.data, (uint32_t)pixel_bytes);
         }
     }
 

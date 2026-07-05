@@ -123,7 +123,7 @@ void DG_DrawFrame() {
             *dst++ = (uint8_t)((c >> 8) & 0xFFu);  // G
             *dst++ = (uint8_t)(c & 0xFFu);         // B
         }
-        (void)window_set_image_raw(g_win_id, DOOMGENERIC_RESX, DOOMGENERIC_RESY, 3, g_rgb_buf, count * 3u);
+        (void)window_set_image_raw(g_win_id, 0, 0, DOOMGENERIC_RESX, DOOMGENERIC_RESY, 3, g_rgb_buf, count * 3u);
         return;
     }
     long rc = sys_fb_blit32((const void*)DG_ScreenBuffer,

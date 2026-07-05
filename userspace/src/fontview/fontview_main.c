@@ -134,7 +134,7 @@ void ntux_user_entry(void) {
                  font_path, GLYPH_PX, fh, scroll);
         (void)info;
 
-        window_set_image_raw(id, buf_w, buf_h, 4, buf, (uint32_t)((size_t)buf_w * buf_h * 4));
+        window_set_image_raw(id, 0, 0, buf_w, buf_h, 4, buf, (uint32_t)((size_t)buf_w * buf_h * 4));
         window_draw_button(id, 20, 18, 190, 26, "Set as desktop font", WINDOW_BUTTON_PRIMARY);
         window_draw_text(id, 224, 25, 0xFFD4E6FFu, font_path);
         if (status[0]) window_draw_text(id, 20, FV_H - 24, 0xFF9BE7B1u, status);

@@ -1723,6 +1723,7 @@ static void browser_paint(void) {
 }
 
 static void navigate(const char *url) {
+    window_clear_image(win_browser);
     static char main_resp[RESP_BUF_SIZE];
     int resp_len = fetch_content(url, main_resp, sizeof(main_resp), true);
     if (resp_len < 0) {

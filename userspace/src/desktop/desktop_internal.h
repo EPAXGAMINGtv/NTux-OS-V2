@@ -19,6 +19,7 @@ extern int g_theme_index;
 extern int g_ui_scale;
 extern desk_term_state_t g_term_states[DESK_MAX_WINDOWS];
 extern desk_term_state_t* g_term_exec_state;
+extern pos_image_t* g_window_images[DESK_MAX_WINDOWS];
 
 extern int g_desktop_dirty;
 extern uint64_t g_last_key_tick;
