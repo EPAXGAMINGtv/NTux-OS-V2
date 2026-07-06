@@ -19,6 +19,8 @@ static void itoa(int v, char*b){char tmp[16];int i=0,neg=0;
 static int win_w = 1280;
 static int win_h = 960;
 #define URL_BAR_H 30
+#define TAB_BAR_H 26
+#define CHROME_H (TAB_BAR_H + URL_BAR_H)
 #define SCROLL_BAR_W 16
 #define RESP_BUF_SIZE (32 * 1024 * 1024)
 
@@ -39,6 +41,20 @@ static int win_h = 960;
 #define HISTORY_MAX 32
 static char history_stack[HISTORY_MAX][512];
 static int history_count = 0;
+
+#define MAX_TABS 10
+typedef struct {
+    char url[512];
+    char title[256];
+    int scroll_y;
+    int history_count;
+    char history_stack[HISTORY_MAX][512];
+    int url_cursor;
+    int focused_element;
+} BrowserTab;
+static BrowserTab tabs[MAX_TABS];
+static int tab_count = 1;
+static int tab_active = 0;
 
 static char* str_istrstr(const char* haystack, const char* needle) {
     if (!*needle) return (char*)haystack;
@@ -102,8 +118,9 @@ typedef struct {
 static RenderElement elements[MAX_ELEMENTS];
 static int element_count = 0;
 
-static char url_input_buffer[512] = "http://find.boreddev.nl";
+static char url_input_buffer[512] = "http://www.google.com";
 static int url_cursor = 22;
+static char page_title[256] = "New Tab";
 static char current_host[256] = "find.boreddev.nl";
 static int current_port = 80;
 static int next_form_id = 1;
@@ -331,7 +348,7 @@ static int fetch_content(const char *url, char *dest_buf, int max_len, bool prog
                 }
             }
             if (scrolled) {
-                int max_scroll = total_content_height - (win_h - URL_BAR_H);
+                int max_scroll = total_content_height - (win_h - CHROME_H);
                 if (max_scroll < 0) max_scroll = 0;
                 if (scroll_y > max_scroll) scroll_y = max_scroll;
                 if (scroll_y < 0) scroll_y = 0;
@@ -957,6 +974,8 @@ static void parse_html(const char *html) {
                 else if (str_iequals(tag_name+1, "title")) {
                     inside_title = false;
                     ui_window_set_title(win_browser, page_title);
+                    strncpy(tabs[tab_active].title, page_title, 255);
+                    tabs[tab_active].title[255] = 0;
                     skip_content = true;
                 }
             } else {
@@ -1420,6 +1439,8 @@ static void parse_html_incremental(const char *html, int safe_len) {
                 else if (str_iequals(tag_name+1, "title")) {
                     inside_title = false;
                     ui_window_set_title(win_browser, page_title);
+                    strncpy(tabs[tab_active].title, page_title, 255);
+                    tabs[tab_active].title[255] = 0;
                     skip_content = true;
                 }
                 } else {
@@ -1620,10 +1641,10 @@ static void browser_paint(void) {
 
     for (int i = 0; i < element_count; i++) {
         RenderElement *el = &elements[i];
-        int draw_y = el->y - scroll_y + URL_BAR_H;
+        int draw_y = el->y - scroll_y + CHROME_H;
         int el_h = el->h;
         if (el->tag == TAG_IMG && el->img_h > el_h) el_h = el->img_h;
-        if (draw_y + el_h < URL_BAR_H || draw_y > win_h) continue;
+        if (draw_y + el_h < CHROME_H || draw_y > win_h) continue;
 
         if (el->tag == 8) {
             if (el->color != 0 && el->color != COLOR_BG) {
@@ -1695,15 +1716,36 @@ static void browser_paint(void) {
         }
     }
 
-    ui_draw_rect(win_browser, 0, 0, win_w, URL_BAR_H, COLOR_URL_BAR);
+    // Tab bar
+    ui_draw_rect(win_browser, 0, 0, win_w, TAB_BAR_H, 0xFF1A2636);
+    for (int ti = 0; ti < tab_count && ti < MAX_TABS; ti++) {
+        int tx = 4 + ti * 126;
+        int tw = 120;
+        int ty = 2;
+        if (ti == tab_active) {
+            ui_draw_rect(win_browser, tx, ty, tw, TAB_BAR_H - 2, 0xFF2A3D55);
+            ui_draw_rect(win_browser, tx, ty + TAB_BAR_H - 4, tw, 2, 0xFF4BB3F5);
+        } else {
+            ui_draw_rect(win_browser, tx, ty, tw, TAB_BAR_H - 4, 0xFF1F2B3B);
+        }
+        if (tabs[ti].title[0]) {
+            ui_draw_string_scaled(win_browser, tx + 4, ty + 6, tabs[ti].title, 0xFFE6F1FF, 1.0f);
+        }
+    }
+    // New tab button
+    int new_tab_x = 4 + (tab_count > MAX_TABS ? MAX_TABS : tab_count) * 126;
+    ui_draw_rect(win_browser, new_tab_x, 2, 26, TAB_BAR_H - 4, 0xFF1F2B3B);
+    ui_draw_string_scaled(win_browser, new_tab_x + 8, 6, "+", 0xFFE6F1FF, 1.0f);
 
-    widget_textbox_init(&url_tb, 10, 5, win_w - SCROLL_BAR_W - BTN_W*2 - BTN_PAD*2 - 20, 20, url_input_buffer, 511);
+    ui_draw_rect(win_browser, 0, TAB_BAR_H, win_w, URL_BAR_H, COLOR_URL_BAR);
+
+    widget_textbox_init(&url_tb, 10, TAB_BAR_H + 5, win_w - SCROLL_BAR_W - BTN_W*2 - BTN_PAD*2 - 20, 20, url_input_buffer, 511);
     url_tb.cursor_pos = url_cursor;
     url_tb.focused = (focused_element == -1);
     widget_textbox_draw(&browser_ctx, &url_tb);
 
     // Back button
-    int btn_y = (URL_BAR_H - BTN_H) / 2;
+    int btn_y = TAB_BAR_H + (URL_BAR_H - BTN_H) / 2;
     widget_button_init(&btn_back, BACK_BTN_X, btn_y, BTN_W, BTN_H, "<");
     widget_button_draw(&browser_ctx, &btn_back);
 
@@ -1712,9 +1754,9 @@ static void browser_paint(void) {
     widget_button_draw(&browser_ctx, &btn_home);
 
     // Scroll bar
-    int viewport_h = win_h - URL_BAR_H;
+    int viewport_h = win_h - CHROME_H;
     browser_scrollbar.x = win_w - SCROLL_BAR_W;
-    browser_scrollbar.y = URL_BAR_H;
+    browser_scrollbar.y = CHROME_H;
     browser_scrollbar.w = SCROLL_BAR_W;
     browser_scrollbar.h = viewport_h;
     browser_scrollbar.on_scroll = browser_on_scroll;
@@ -1724,6 +1766,30 @@ static void browser_paint(void) {
 
 static void navigate(const char *url) {
     window_clear_image(win_browser);
+    // Save URL to current tab and set initial title
+    strncpy(tabs[tab_active].url, url, 511);
+    tabs[tab_active].url[511] = 0;
+    tabs[tab_active].scroll_y = scroll_y;
+    tabs[tab_active].focused_element = focused_element;
+    tabs[tab_active].history_count = history_count;
+    for (int hi = 0; hi < history_count; hi++) {
+        strncpy(tabs[tab_active].history_stack[hi], history_stack[hi], 511);
+        tabs[tab_active].history_stack[hi][511] = 0;
+    }
+    tabs[tab_active].url_cursor = url_cursor;
+    if (!tabs[tab_active].title[0] || strcmp(tabs[tab_active].title, "New Tab") == 0) {
+        const char *short_start = url;
+        const char *proto = strstr(url, "://");
+        if (proto) short_start = proto + 3;
+        strncpy(tabs[tab_active].title, short_start, 255);
+        tabs[tab_active].title[255] = 0;
+        char *slash = strchr(tabs[tab_active].title, '/');
+        if (slash) *slash = 0;
+    }
+    ui_window_set_title(win_browser, "NTux-Browser");
+    // Draw chrome before blocking HTTP request
+    browser_paint();
+    ui_mark_dirty(win_browser, 0, 0, win_w, win_h);
     static char main_resp[RESP_BUF_SIZE];
     int resp_len = fetch_content(url, main_resp, sizeof(main_resp), true);
     if (resp_len < 0) {
@@ -1757,10 +1823,19 @@ static void net_init_if_needed(void) {
 }
 
 void ntux_user_entry(void) {
-    win_browser = ui_window_create("Bored Web", 50, 50, win_w, win_h);
+    win_browser = ui_window_create("NTux-Browser", 50, 50, win_w, win_h);
     ui_window_set_resizable(win_browser, true);
     ui_set_font(win_browser, "/Library/Fonts/times.ttf");
     net_init_if_needed();
+    // Initialize first tab
+    memset(tabs, 0, sizeof(tabs));
+    tab_count = 1;
+    tab_active = 0;
+    strncpy(tabs[0].title, "New Tab", 255);
+    tabs[0].title[255] = 0;
+    strncpy(tabs[0].url, url_input_buffer, 511);
+    tabs[0].url[511] = 0;
+    tabs[0].url_cursor = url_cursor;
     navigate(url_input_buffer);
     browser_reflow(); browser_paint(); ui_mark_dirty(win_browser, 0, 0, win_w, win_h);
     gui_event_t ev;
@@ -1795,7 +1870,65 @@ void ntux_user_entry(void) {
 
                 if (ev.type != GUI_EVENT_CLICK && ev.type != GUI_EVENT_MOUSE_DOWN) continue;
 
-                if (my < URL_BAR_H) {
+                if (my < CHROME_H) {
+                    // Tab bar clicks
+                    if (my < TAB_BAR_H && is_click) {
+                        int clicked_tab = -1;
+                        int new_tab_click = 0;
+                        int tx = 4;
+                        for (int ti = 0; ti < tab_count && ti < MAX_TABS; ti++) {
+                            if (mx >= tx && mx < tx + 120) { clicked_tab = ti; break; }
+                            tx += 126;
+                        }
+                        int new_tab_x = 4 + (tab_count > MAX_TABS ? MAX_TABS : tab_count) * 126;
+                        if (mx >= new_tab_x && mx < new_tab_x + 26) { new_tab_click = 1; }
+
+                        if (clicked_tab >= 0 && clicked_tab != tab_active) {
+                            // Save current tab state
+                            strncpy(tabs[tab_active].url, url_input_buffer, 511);
+                            tabs[tab_active].url[511] = 0;
+                            tabs[tab_active].scroll_y = scroll_y;
+                            tabs[tab_active].focused_element = focused_element;
+                            tabs[tab_active].history_count = history_count;
+                            for (int hi = 0; hi < history_count; hi++) {
+                                strncpy(tabs[tab_active].history_stack[hi], history_stack[hi], 511);
+                                tabs[tab_active].history_stack[hi][511] = 0;
+                            }
+                            tabs[tab_active].url_cursor = url_cursor;
+                            // Switch tab
+                            tab_active = clicked_tab;
+                            strncpy(url_input_buffer, tabs[tab_active].url, 511);
+                            url_input_buffer[511] = 0;
+                            url_cursor = tabs[tab_active].url_cursor;
+                            scroll_y = tabs[tab_active].scroll_y;
+                            focused_element = tabs[tab_active].focused_element;
+                            history_count = tabs[tab_active].history_count;
+                            for (int hi = 0; hi < history_count; hi++) {
+                                strncpy(history_stack[hi], tabs[tab_active].history_stack[hi], 511);
+                                history_stack[hi][511] = 0;
+                            }
+                            element_count = 0;
+                            navigate(url_input_buffer);
+                            needs_repaint = true;
+                            continue;
+                        }
+                        if (new_tab_click && tab_count < MAX_TABS) {
+                            tab_active = tab_count;
+                            tab_count++;
+                            memset(&tabs[tab_active], 0, sizeof(BrowserTab));
+                            strncpy(tabs[tab_active].title, "New Tab", 255);
+                            tabs[tab_active].title[255] = 0;
+                            url_input_buffer[0] = 0;
+                            url_cursor = 0;
+                            scroll_y = 0;
+                            focused_element = -1;
+                            history_count = 0;
+                            element_count = 0;
+                            { RenderElement *e = &elements[element_count++]; memset(e,0,sizeof(RenderElement)); e->tag=TAG_NONE; e->x=10; e->y=10; e->color=0xFF888888; e->scale=1.0f; int i=0; const char *s="Enter a URL and press Enter."; while(*s && i<1023) e->content[i++]=*s++; e->content[i]=0; }
+                            needs_repaint = true;
+                            continue;
+                        }
+                    }
                     if (widget_textbox_handle_mouse(&browser_ctx, &url_tb, mx, my, is_click, NULL)) {
                         focused_element = -1;
                         needs_repaint = true;
@@ -1823,7 +1956,7 @@ void ntux_user_entry(void) {
                     }
                     continue;
                 }
-                my = ev.arg2 - URL_BAR_H + scroll_y;
+                my = ev.arg2 - CHROME_H + scroll_y;
                 bool found = false;
                 for (int i = 0; i < element_count; i++) {
                     RenderElement *el = &elements[i];
@@ -1843,7 +1976,7 @@ void ntux_user_entry(void) {
                                     if (elements[k].checked) {
                                         elements[k].checked = false;
                                         widget_checkbox_t cb;
-                                        widget_checkbox_init(&cb, elements[k].x, elements[k].y - scroll_y + URL_BAR_H, elements[k].w, elements[k].h, "", true);
+                                        widget_checkbox_init(&cb, elements[k].x, elements[k].y - scroll_y + CHROME_H, elements[k].w, elements[k].h, "", true);
                                         cb.checked = false;
                                         browser_ctx.use_light_theme = true;
                                         widget_checkbox_draw(&browser_ctx, &cb);
@@ -1854,7 +1987,7 @@ void ntux_user_entry(void) {
                             }
                             el->checked = true;
                             widget_checkbox_t cb;
-                            widget_checkbox_init(&cb, el->x, el->y - scroll_y + URL_BAR_H, el->w, el->h, "", true);
+                            widget_checkbox_init(&cb, el->x, el->y - scroll_y + CHROME_H, el->w, el->h, "", true);
                             cb.checked = true;
                             browser_ctx.use_light_theme = true;
                             widget_checkbox_draw(&browser_ctx, &cb);
@@ -1865,7 +1998,7 @@ void ntux_user_entry(void) {
                         if (el->tag == TAG_CHECKBOX) {
                             el->checked = !el->checked;
                             widget_checkbox_t cb;
-                            widget_checkbox_init(&cb, el->x, el->y - scroll_y + URL_BAR_H, el->w, el->h, "", false);
+                            widget_checkbox_init(&cb, el->x, el->y - scroll_y + CHROME_H, el->w, el->h, "", false);
                             cb.checked = el->checked;
                             browser_ctx.use_light_theme = true;
                             widget_checkbox_draw(&browser_ctx, &cb);
@@ -2107,7 +2240,7 @@ void ntux_user_entry(void) {
                 else if (c == 19) { scroll_y -= 200; } // Page Up
                 else if (c == 20) { scroll_y += 200; } // Page Down
 
-                int max_scroll = total_content_height - (win_h - URL_BAR_H);
+                int max_scroll = total_content_height - (win_h - CHROME_H);
                 if (max_scroll < 0) max_scroll = 0;
                 if (scroll_y > max_scroll) scroll_y = max_scroll;
                 if (scroll_y < 0) scroll_y = 0;
@@ -2115,7 +2248,7 @@ void ntux_user_entry(void) {
                 needs_repaint = true;
             } else if (ev.type == 9) { // GUI_EVENT_MOUSE_WHEEL
                 scroll_y += ev.arg1 * 20;
-                int max_scroll = total_content_height - (win_h - URL_BAR_H);
+                int max_scroll = total_content_height - (win_h - CHROME_H);
                 if (max_scroll < 0) max_scroll = 0;
                 if (scroll_y > max_scroll) scroll_y = max_scroll;
                 if (scroll_y < 0) scroll_y = 0;
