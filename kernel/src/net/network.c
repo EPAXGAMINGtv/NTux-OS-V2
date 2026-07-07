@@ -17,6 +17,30 @@
 #include "nic.h"
 #include "spinlock.h"
 #include "../sys/process.h"
+#include <interrupt/timer.h>
+#include <sched/thread.h>
+
+/* 
+ * Helper: block the current thread for ~1 tick (~4ms at 250Hz) so other 
+ * threads (especially the GUI/kompositor) get CPU time. This replaces 
+ * busy-wait k_delay() calls that would otherwise starve the desktop.
+ */
+static void network_thread_block(void) {
+    thread_lock_global();
+    int tid = current_thread_id;
+    if (tid >= 0 && tid < MAX_THREADS) {
+        thread_t *t = thread_list[tid];
+        if (t && t->state != THREAD_BLOCKED) {
+            t->wake_tick = get_tick_count() + 1;
+            t->state = THREAD_BLOCKED;
+            rq_remove(t);
+            g_thread_blocked_count++;
+            wake_list_add(t);
+        }
+    }
+    thread_unlock_global();
+    scheduler();
+}
 
 static struct netif nic_netif;
 static int lwip_initialized = 0;
@@ -184,7 +208,7 @@ int network_dhcp_acquire(void) {
             return 0;
         }
         spinlock_release_irqrestore(&network_lock, flags);
-        k_delay(500); // 5ms delay
+        network_thread_block();
     }
     serial_write("[DHCP] Timeout\n");
     return -1;
@@ -231,7 +255,7 @@ int network_tcp_connect(const ipv4_address_t *ip, uint16_t port) {
         if (tcp_connect_done) { spinlock_release_irqrestore(&network_lock, flags); serial_write("[TCP] connected OK\n"); return 0; }
         if (tcp_connect_error) { spinlock_release_irqrestore(&network_lock, flags); serial_write("[TCP] connect error\n"); return -1; }
         spinlock_release_irqrestore(&network_lock, flags);
-        k_delay(10);
+        network_thread_block();
     }
     serial_write("[TCP] connect TIMEOUT\n");
     return -1;
@@ -273,7 +297,7 @@ int network_tcp_recv(void *buf, size_t max_len) {
 
         if (sys_now() - start >= 30000) return 0;
         network_process_frames();
-        k_delay(10);
+        network_thread_block();
     }
 }
 
@@ -407,7 +431,7 @@ int network_tcp_accept(void) {
             return 0;
         }
         spinlock_release_irqrestore(&network_lock, flags);
-        k_delay(10);
+        network_thread_block();
         if (sys_now() - start >= 50) {
             return -2;
         }
@@ -473,7 +497,7 @@ int network_dns_lookup(const char *name, ipv4_address_t *out_ip) {
                 return -1;
             }
             spinlock_release_irqrestore(&network_lock, flags);
-            k_delay(10);
+            network_thread_block();
         }
         serial_write("[DNS] lookup timeout\n");
     }
@@ -602,7 +626,7 @@ int network_icmp_single_ping(ipv4_address_t *dest) {
             break;
         }
         spinlock_release_irqrestore(&network_lock, flags);
-        k_delay(10);
+        network_thread_block();
     }
     
     flags = spinlock_acquire_irqsave(&network_lock);
@@ -811,7 +835,7 @@ int network_socket_connect(void *s, uint32_t ip_val, uint16_t port) {
             return -1;
         }
         spinlock_release_irqrestore(&network_lock, flags);
-        k_delay(10);
+        network_thread_block();
     }
     return -1;
 }
@@ -851,7 +875,7 @@ int network_socket_recv(void *s, void *buf, size_t max_len, int nonblock) {
         spinlock_release_irqrestore(&network_lock, flags);
 
         network_process_frames();
-        k_delay(10);
+        network_thread_block();
     }
 }
 

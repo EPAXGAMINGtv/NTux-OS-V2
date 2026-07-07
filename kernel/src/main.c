@@ -20,7 +20,7 @@
 #include <interrupt/apic/apic.h>
 #include <network.h>
 #include <drivers/sata/ata.h>
-#include <drivers/audio/intel_hda.h>
+/* #include <drivers/audio/intel_hda.h> */
 #include <drivers/nvme/nvme.h>
 
 #include <sched/thread.h>
@@ -178,7 +178,7 @@ static void init_drivers(void) {
         kprint_error("No supported NIC detected");
     }
 
-    intel_hda_init();
+    /* intel_hda_init(); */
 
 }
 
