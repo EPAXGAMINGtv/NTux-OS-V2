@@ -36,7 +36,7 @@ bool thread_try_lock_global(void) {
     return __atomic_test_and_set(&g_thread_lock, __ATOMIC_ACQUIRE) == 0;
 }
 
-enum { THREAD_STACK_SIZE = 8192 };
+enum { THREAD_STACK_SIZE = 16384 };
 
 static void thread_init_common(thread_t* t, void (*entry)(void)) {
     memset(t, 0, sizeof(*t));
