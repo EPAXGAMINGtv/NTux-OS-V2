@@ -1,0 +1,345 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="BackendCodeEditorMiscSettings">
+    <option name="/Default/Housekeeping/FeatureSuggestion/FeatureSuggestionManager/DisabledSuggesters/=SwitchToGoToActionSuggester/@EntryIndexedValue" value="true" type="bool" />
+  </component>
+  <component name="CMakeProjectFlavorService">
+    <option name="flavorId" value="CMakePlainProjectFlavor" />
+  </component>
+  <component name="CMakeRunConfigurationManager">
+    <generated>
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="distclean" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="edk2-ovmf" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="all" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-hdd-x86_64" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-x86_64" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-hdd-aarch64" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="kernel" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-hdd-riscv64" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="create-drives" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-aarch64" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-loongarch64" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-hdd-bios" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-hdd" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-bios" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-riscv64" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="userspace" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="all-hdd" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run-hdd-loongarch64" />
+      <config projectName="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" targetName="run" />
+    </generated>
+  </component>
+  <component name="CMakeSettings">
+    <configurations>
+      <configuration PROFILE_NAME="Debug" ENABLED="true" CONFIG_NAME="Debug" />
+    </configurations>
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="4c1d2a54-22bb-4667-974e-2f5daa8fec0d" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/editor.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="1208" />
+  </component>
+  <component name="ExternalProjectsData">
+    <projectState path="$PROJECT_DIR$">
+      <ProjectState />
+    </projectState>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "EPAXGAMINGtv"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/EPAXGAMINGtv/NTux-OS-V2.git",
+    "accountId": "e0d693b1-efda-469f-b22f-69bd5051c261"
+  }
+}]]></component>
+  <component name="MacroExpansionManager">
+    <option name="directoryName" value="K8VG7irf" />
+  </component>
+  <component name="MakefileLocalSettings">
+    <option name="availableProjects">
+      <map>
+        <entry>
+          <key>
+            <ExternalProjectPojo>
+              <option name="name" value="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" />
+              <option name="path" value="$PROJECT_DIR$" />
+            </ExternalProjectPojo>
+          </key>
+          <value>
+            <list>
+              <ExternalProjectPojo>
+                <option name="name" value="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" />
+                <option name="path" value="$PROJECT_DIR$" />
+              </ExternalProjectPojo>
+            </list>
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="projectSyncType">
+      <map>
+        <entry key="$PROJECT_DIR$" value="RE_IMPORT" />
+      </map>
+    </option>
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.2665004739859387" />
+      <entry key="MS500" value="3.2592078929934543" />
+      <entry key="S2" value="7.815993642279225" />
+      <entry key="S5" value="10.021253742414356" />
+      <entry key="S10" value="11.007608204237552" />
+      <entry key="S30" value="18.66005168547675" />
+      <entry key="S60" value="43.75433419973918" />
+      <entry key="M2" value="98.08686135595865" />
+      <entry key="M5" value="213.68325770188272" />
+      <entry key="M10" value="301.5503283474171" />
+      <entry key="M15" value="342.0807257586495" />
+      <entry key="M30" value="390.3275435352539" />
+      <entry key="H1" value="417.8639586728744" />
+      <entry key="H2" value="432.5903698490301" />
+      <entry key="H4" value="440.20760192529076" />
+      <entry key="D1" value="446.68891281535946" />
+      <entry key="W1" value="447.8123967708878" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="0.0" />
+      <entry key="S2" value="0.0" />
+      <entry key="S5" value="0.0" />
+      <entry key="S10" value="0.0" />
+      <entry key="S30" value="0.0" />
+      <entry key="S60" value="0.0" />
+      <entry key="M2" value="0.0" />
+      <entry key="M5" value="0.0" />
+      <entry key="M10" value="0.0" />
+      <entry key="M15" value="0.0" />
+      <entry key="M30" value="0.0" />
+      <entry key="H1" value="0.0" />
+      <entry key="H2" value="0.0" />
+      <entry key="H4" value="0.0" />
+      <entry key="D1" value="0.0" />
+      <entry key="W1" value="0.0" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="1.2386119499680208" />
+      <entry key="MS500" value="3.2418799427101597" />
+      <entry key="S2" value="7.805464619371433" />
+      <entry key="S5" value="10.015893282606882" />
+      <entry key="S10" value="11.004675361495147" />
+      <entry key="S30" value="18.658470157378353" />
+      <entry key="S60" value="43.75254158433508" />
+      <entry key="M2" value="98.08482355575663" />
+      <entry key="M5" value="213.6813824442594" />
+      <entry key="M10" value="301.5489667519852" />
+      <entry key="M15" value="342.0796853617774" />
+      <entry key="M30" value="390.32694368852884" />
+      <entry key="H1" value="417.8636358803111" />
+      <entry key="H2" value="432.59020231918004" />
+      <entry key="H4" value="440.2075165717206" />
+      <entry key="D1" value="446.68889836427144" />
+      <entry key="W1" value="447.8123947008605" />
+    </decayedShown>
+  </component>
+  <component name="ProjectApplicationVersion">
+    <option name="ide" value="CLion" />
+    <option name="majorVersion" value="2026" />
+    <option name="minorVersion" value="1.4" />
+    <option name="productBranch" value="Classic" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 1,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3GB5S0kx6PKmCkKbhlkbmYcGf7e" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.RadMigrateCodeStyle": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "/home/epaxgaming/Schreibtisch/NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "org.rust.first.attach.projects": "true",
+    "settings.editor.selected.configurable": "settings.sync",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="RunManager" selected="Native Application.all">
+    <configuration name="all-hdd" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="all-hdd" CONFIG_NAME="all-hdd" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="all-hdd">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="all" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="all" CONFIG_NAME="all" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="all">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="create-drives" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="create-drives" CONFIG_NAME="create-drives" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="create-drives">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="distclean" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="distclean" CONFIG_NAME="distclean" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="distclean">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="edk2-ovmf" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="edk2-ovmf" CONFIG_NAME="edk2-ovmf" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="edk2-ovmf">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="kernel" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="kernel" CONFIG_NAME="kernel" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="kernel">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-aarch64" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-aarch64" CONFIG_NAME="run-aarch64" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-aarch64">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-bios" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-bios" CONFIG_NAME="run-bios" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-bios">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-hdd-aarch64" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-hdd-aarch64" CONFIG_NAME="run-hdd-aarch64" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-hdd-aarch64">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-hdd-bios" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-hdd-bios" CONFIG_NAME="run-hdd-bios" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-hdd-bios">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-hdd-loongarch64" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-hdd-loongarch64" CONFIG_NAME="run-hdd-loongarch64" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-hdd-loongarch64">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-hdd-riscv64" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-hdd-riscv64" CONFIG_NAME="run-hdd-riscv64" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-hdd-riscv64">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-hdd-x86_64" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-hdd-x86_64" CONFIG_NAME="run-hdd-x86_64" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-hdd-x86_64">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-hdd" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-hdd" CONFIG_NAME="run-hdd" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-hdd">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-loongarch64" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-loongarch64" CONFIG_NAME="run-loongarch64" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-loongarch64">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-riscv64" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-riscv64" CONFIG_NAME="run-riscv64" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-riscv64">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run-x86_64" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run-x86_64" CONFIG_NAME="run-x86_64" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run-x86_64">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="run" CONFIG_NAME="run" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="run">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="userspace" type="CLionNativeAppRunConfigurationType" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" TARGET_NAME="userspace" CONFIG_NAME="userspace" version="1" RUN_TARGET_PROJECT_NAME="NTux-OS-V2-7a9e2faa0f670070accb83d196f0a25beb43ec1e" RUN_TARGET_NAME="userspace">
+      <method v="2">
+        <option name="CLION.COMPOUND.BUILD" enabled="true" />
+      </method>
+    </configuration>
+    <list>
+      <item itemvalue="Native Application.all" />
+      <item itemvalue="Native Application.all-hdd" />
+      <item itemvalue="Native Application.create-drives" />
+      <item itemvalue="Native Application.distclean" />
+      <item itemvalue="Native Application.kernel" />
+      <item itemvalue="Native Application.run" />
+      <item itemvalue="Native Application.run-aarch64" />
+      <item itemvalue="Native Application.run-bios" />
+      <item itemvalue="Native Application.run-hdd" />
+      <item itemvalue="Native Application.run-hdd-aarch64" />
+      <item itemvalue="Native Application.run-hdd-bios" />
+      <item itemvalue="Native Application.run-hdd-loongarch64" />
+      <item itemvalue="Native Application.run-hdd-riscv64" />
+      <item itemvalue="Native Application.run-hdd-x86_64" />
+      <item itemvalue="Native Application.run-loongarch64" />
+      <item itemvalue="Native Application.run-riscv64" />
+      <item itemvalue="Native Application.run-x86_64" />
+      <item itemvalue="Native Application.userspace" />
+      <item itemvalue="Native Application.edk2-ovmf" />
+    </list>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="4c1d2a54-22bb-4667-974e-2f5daa8fec0d" name="Changes" comment="" />
+      <created>1783432117194</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1783432117194</updated>
+      <workItem from="1783432118224" duration="418000" />
+      <workItem from="1783432592096" duration="678000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
